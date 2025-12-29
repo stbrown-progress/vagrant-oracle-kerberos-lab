@@ -1,0 +1,21 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.network "public_network"
+  
+  config.vm.provider "hyperv" do |hv|
+    hv.vmname = "oracle-db"
+    hv.memory = 4096
+    hv.maxmemory = 4096
+    hv.cpus = 2
+    hv.enable_virtualization_extensions = true
+  end
+
+  # Read KDC IP
+  kdc_ip = "127.0.0.1"
+  if File.exist?('../.kdc_ip')
+    kdc_ip = File.read('../.kdc_ip').strip
+  end
+
+  # Run local provision script, passing KDC IP
+  config.vm.provision "shell", path: "provision.sh", args: [kdc_ip]
+end

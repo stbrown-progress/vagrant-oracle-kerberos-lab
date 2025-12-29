@@ -1,0 +1,19 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.network "public_network"
+  
+  config.vm.provider "hyperv" do |hv|
+    hv.vmname = "test-client"
+    hv.memory = 1024
+    hv.maxmemory = 1024
+    hv.enable_virtualization_extensions = true
+  end
+
+  # Read KDC IP
+  kdc_ip = "127.0.0.1"
+  if File.exist?('../.kdc_ip')
+    kdc_ip = File.read('../.kdc_ip').strip
+  end
+
+  config.vm.provision "shell", path: "provision.sh", args: [kdc_ip]
+end

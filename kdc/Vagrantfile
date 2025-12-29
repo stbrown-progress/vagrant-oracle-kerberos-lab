@@ -1,0 +1,30 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/ubuntu2204"
+  config.vm.hostname = "samba-ad-dc"
+  config.vm.network "public_network"
+
+  config.vm.provider "hyperv" do |hv|
+    hv.vmname = "samba-ad-dc"
+    hv.memory = 1024
+    hv.maxmemory = 1024
+    hv.enable_virtualization_extensions = true
+  end
+
+  # The heavy lifting happens inside the VM
+  config.vm.provision "shell", path: "provision.sh"
+
+  # --- VAGRANT NATIVE STATE PASSING ---
+  # Write the IP to a hidden file in the project root
+  config.trigger.after :up do |trigger|
+    trigger.ruby do |env,machine|
+      # Get the IP from the SSH info
+      ip = machine.ssh_info[:host]
+      
+      # Write IP directly to the parent folder
+      File.write('../.kdc_ip', ip)
+      
+      # Print success message to console
+      puts "✅ KDC IP [#{ip}] saved to .kdc_ip"
+    end
+  end
+end

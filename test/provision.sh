@@ -53,6 +53,7 @@ mkdir -p /opt/oracle
 # Persist env vars for vagrant
 echo "export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH" >> /home/vagrant/.bashrc
 echo "export PATH=$IC_DIR:\$PATH" >> /home/vagrant/.bashrc
+echo "export TNS_ADMIN=$IC_DIR/network/admin" >> /home/vagrant/.bashrc
 
 # --- Generate Oracle Instant Client install helper script ---
 cat <<'EOF' > /home/vagrant/install-oracle.sh
@@ -87,31 +88,37 @@ cat <<EOF > $IC_DIR/network/admin/sqlnet.ora
 NAMES.DIRECTORY_PATH= (TNSNAMES, EZCONNECT, HOSTNAME)
 SQLNET.AUTHENTICATION_SERVICES = (KERBEROS5)
 SQLNET.KERBEROS5_CONF = /etc/krb5.conf
+SQLNET.AUTHENTICATION_KERBEROS5_SERVICE = oracle
 SQLNET.KERBEROS5_CONF_MIT = TRUE
 EOF
 
 # --- Create a test script for Kerberos and Oracle connectivity ---
 cat <<EOF > /home/vagrant/test_auth.sh
 #!/bin/bash
+IC_DIR="/opt/oracle/instantclient"
 export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH
 export PATH=$IC_DIR:\$PATH
+export TNS_ADMIN=$IC_DIR/network/admin
 
-echo "--- 1. Testing KDC Connectivity ---"
+echo "--- Testing KDC Connectivity ---"
 nc -zv samba-ad-dc.corp.internal 88
 
-echo -e "\n--- 1a. Validating DNS for Oracle ---"
+echo -e "\n--- Validating DNS for Oracle ---"
 dig +short oracle.corp.internal || true
 
-echo -e "\n--- 2. Requesting TGT ---"
+echo -e "\n--- Confirming SQL*Net config ---"
+ls -l "\$TNS_ADMIN/sqlnet.ora"
+
+echo -e "\n--- Requesting TGT ---"
 kdestroy -A 2>/dev/null || true
 echo "StrongPassword123!" | kinit oracleuser@CORP.INTERNAL
 klist
 
-echo -e "\n--- 2a. Requesting a service ticket for Oracle ---"
+echo -e "\n--- Requesting a service ticket for Oracle ---"
 kvno oracle/oracle.corp.internal
 klist
 
-echo -e "\n--- 3. Connecting to Oracle via SQLPlus (Kerberos) ---"
+echo -e "\n--- Connecting to Oracle via SQLPlus (Kerberos) ---"
 sqlplus -L /@oracle.corp.internal:1521/XEPDB1 <<EXITSQL
 PROMPT Successfully connected to Oracle!
 SELECT 'Authenticated User: ' || USER FROM DUAL;

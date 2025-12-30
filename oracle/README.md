@@ -63,3 +63,27 @@ Kerberos has two roles:
 You can use a user keytab to authenticate and then request a service ticket via
 `kvno`. The service keytab is what the Oracle service uses to decrypt and accept
 those tickets.
+
+## Plain-English mental model
+
+- Client principals (users or machines) are the identities that can log in and
+  receive a TGT.
+- SPNs (service names) are the identities that clients request tickets for.
+- An SPN is stored on a user or machine account, which makes that account the
+  owner of the service identity.
+
+## Short diagram
+
+```text
+Client login (user/machine)                 Service identity (SPN)
+
+oracleuser@CORP.INTERNAL  ---- owns ---->   oracle/oracle.corp.internal
+        |                                                   |
+        | kinit (TGT)                                       | keytab for service
+        v                                                   v
+   TGT issued                                     Service accepts ticket
+        |
+        | kvno oracle/oracle.corp.internal
+        v
+ Service ticket issued
+```

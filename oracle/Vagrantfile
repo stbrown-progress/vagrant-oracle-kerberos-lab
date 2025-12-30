@@ -1,3 +1,5 @@
+require "base64"
+
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/ubuntu2204"
   config.vm.network "public_network"
@@ -18,4 +20,30 @@ Vagrant.configure("2") do |config|
 
   # Run local provision script, passing KDC IP
   config.vm.provision "shell", path: "provision.sh", args: [kdc_ip]
+  # Update Windows hosts file to allow name-based access from the host.
+  config.trigger.after :up do |trigger|
+    trigger.ruby do |env, machine|
+      ip = machine.ssh_info[:host]
+      hostnames = "oracle.corp.internal oracle"
+      ps = <<~POWERSHELL
+        $path = "$env:SystemRoot\\System32\\drivers\\etc\\hosts"
+        $entry = "#{ip} #{hostnames}"
+        $content = @()
+        if (Test-Path $path) {
+          $item = Get-Item $path
+          if ($item.Attributes -band [IO.FileAttributes]::ReadOnly) {
+            $item.Attributes = $item.Attributes -bxor [IO.FileAttributes]::ReadOnly
+          }
+          Copy-Item -Path $path -Destination "$path.bak" -Force
+          $content = Get-Content $path
+        }
+        $content = $content | Where-Object { $_ -notmatch 'oracle(\.corp\.internal)?' }
+        $content += $entry
+        Set-Content -Path $path -Value $content -Encoding ASCII -Force
+      POWERSHELL
+      encoded = Base64.strict_encode64(ps.encode("UTF-16LE"))
+      system("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand #{encoded}")
+    end
+  end
+
 end

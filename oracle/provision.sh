@@ -10,6 +10,12 @@ sed -i "/oracle/d" /etc/hosts
 echo "$ORACLE_IP oracle.corp.internal oracle" >> /etc/hosts
 echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 
+# Point DNS at the KDC so Kerberos realm lookups work consistently.
+systemctl stop systemd-resolved
+systemctl disable systemd-resolved
+rm -f /etc/resolv.conf
+echo "nameserver $KDC_IP" > /etc/resolv.conf
+
 # Download the Kerberos config and keytabs from the KDC.
 mkdir -p /opt/oracle_keytab
 fetch_with_retry() {
@@ -90,7 +96,7 @@ CREATE USER "oracleuser@CORP.INTERNAL" IDENTIFIED EXTERNALLY AS 'oracleuser@CORP
 GRANT CONNECT, RESOURCE TO "oracleuser@CORP.INTERNAL";
 EOF
 
-# 4. Install Docker
+# Install Docker
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
@@ -99,7 +105,7 @@ if ! command -v docker &> /dev/null; then
     systemctl start docker
 fi
 
-# 5. Run Container
+# Run Container
 if [ ! "$(docker ps -q -f name=oracle)" ]; then
     if [ "$(docker ps -aq -f name=oracle)" ]; then docker rm oracle; fi
     

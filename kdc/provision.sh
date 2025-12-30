@@ -69,3 +69,8 @@ samba-tool domain exportkeytab --principal=oracle/oracle.corp.internal@CORP.INTE
 samba-tool domain exportkeytab --principal=dnsupdater@CORP.INTERNAL /var/www/html/artifacts/dnsupdater.keytab
 chmod 644 /var/www/html/artifacts/*
 systemctl restart nginx
+
+echo "SPNs for oracleuser:"
+samba-tool spn list oracleuser || true
+echo "Keytab principals for oracle.keytab:"
+klist -k /var/www/html/artifacts/oracle.keytab || true

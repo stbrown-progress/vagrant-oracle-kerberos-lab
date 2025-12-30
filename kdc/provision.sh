@@ -47,7 +47,7 @@ if ! samba-tool user list | grep -q "oracleuser"; then
 fi
 
 echo "Str0ngPassw0rd!" | kinit Administrator
-samba-tool spn add kerberos/oracle.corp.internal oracleuser || true
+samba-tool spn add oracle/oracle.corp.internal oracleuser || true
 
 cat <<EOF | ldapmodify -Y GSSAPI -H ldap://localhost
 dn: CN=oracleuser,CN=Users,DC=corp,DC=internal
@@ -59,6 +59,6 @@ EOF
 # --- 5. Export Artifacts (DATA ONLY) ---
 mkdir -p /var/www/html/artifacts
 cp /etc/krb5.conf /var/www/html/artifacts/krb5.conf
-samba-tool domain exportkeytab --principal=kerberos/oracle.corp.internal@CORP.INTERNAL /var/www/html/artifacts/oracle.keytab
+samba-tool domain exportkeytab --principal=oracle/oracle.corp.internal@CORP.INTERNAL /var/www/html/artifacts/oracle.keytab
 chmod 644 /var/www/html/artifacts/*
 systemctl restart nginx

@@ -37,6 +37,7 @@ fetch_with_retry() {
 }
 
 fetch_with_retry "http://$KDC_IP/artifacts/oracle.keytab" /opt/artifacts/oracle.keytab
+fetch_with_retry "http://$KDC_IP/artifacts/oracleuser.keytab" /opt/artifacts/oracleuser.keytab
 fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /opt/artifacts/krb5.conf
 fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/artifacts/dnsupdater.keytab
 
@@ -81,6 +82,12 @@ kdestroy || true
 
 # Verify DNS registration against the KDC to help diagnose resolution issues.
 dig +short @$KDC_IP oracle.corp.internal || true
+
+# Verify keytabs and Kerberos config are coherent for quick debugging.
+export KRB5_CONFIG=/opt/artifacts/krb5.conf
+klist -k /opt/artifacts/oracle.keytab || true
+klist -k /opt/artifacts/oracleuser.keytab || true
+kvno oracle/oracle.corp.internal || true
 
 cat <<EOF > /opt/scripts/setup-sqlnet.sh
 #!/bin/bash

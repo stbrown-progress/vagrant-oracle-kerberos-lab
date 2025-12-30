@@ -70,6 +70,7 @@ EOF
 mkdir -p /var/www/html/artifacts
 cp /etc/krb5.conf /var/www/html/artifacts/krb5.conf
 samba-tool domain exportkeytab --principal=oracle/oracle.corp.internal@CORP.INTERNAL /var/www/html/artifacts/oracle.keytab
+samba-tool domain exportkeytab --principal=oracleuser@CORP.INTERNAL /var/www/html/artifacts/oracleuser.keytab
 samba-tool domain exportkeytab --principal=dnsupdater@CORP.INTERNAL /var/www/html/artifacts/dnsupdater.keytab
 chmod 644 /var/www/html/artifacts/*
 systemctl restart nginx
@@ -78,3 +79,5 @@ echo "SPNs for oracleuser:"
 samba-tool spn list oracleuser || true
 echo "Keytab principals for oracle.keytab:"
 klist -k /var/www/html/artifacts/oracle.keytab || true
+echo "Keytab principals for oracleuser.keytab:"
+klist -k /var/www/html/artifacts/oracleuser.keytab || true

@@ -52,6 +52,10 @@ fi
 
 samba-tool group addmembers "DnsAdmins" dnsupdater || true
 
+samba-tool user setexpiry Administrator --noexpiry || true
+samba-tool user setexpiry oracleuser --noexpiry || true
+samba-tool user setexpiry dnsupdater --noexpiry || true
+
 echo "Str0ngPassw0rd!" | kinit Administrator
 samba-tool spn add oracle/oracle.corp.internal oracleuser || true
 

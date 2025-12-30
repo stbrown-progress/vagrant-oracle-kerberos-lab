@@ -91,7 +91,21 @@ kvno oracle/oracle.corp.internal || true
 
 cat <<EOF > /opt/scripts/setup-sqlnet.sh
 #!/bin/bash
-cp /opt/scripts/sqlnet.ora \$ORACLE_HOME/network/admin/sqlnet.ora
+set -e
+
+# Ensure sqlnet.ora is placed where the image actually reads it.
+targets=()
+if [ -n "\$ORACLE_HOME" ]; then
+  targets+=("\$ORACLE_HOME/network/admin")
+fi
+if [ -d "/opt/oracle/homes/OraDBHome21cXE/network/admin" ]; then
+  targets+=("/opt/oracle/homes/OraDBHome21cXE/network/admin")
+fi
+
+for dir in "\${targets[@]}"; do
+  mkdir -p "\$dir"
+  cp /opt/scripts/sqlnet.ora "\$dir/sqlnet.ora"
+done
 EOF
 chmod +x /opt/scripts/setup-sqlnet.sh
 

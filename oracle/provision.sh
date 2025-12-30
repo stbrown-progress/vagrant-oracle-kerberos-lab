@@ -12,9 +12,27 @@ echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 
 # Download the Kerberos config and keytabs from the KDC.
 mkdir -p /opt/oracle_keytab
-wget -q http://$KDC_IP/artifacts/oracle.keytab -O /opt/oracle_keytab/oracle.keytab
-wget -q http://$KDC_IP/artifacts/krb5.conf -O /opt/oracle_keytab/krb5.conf
-wget -q http://$KDC_IP/artifacts/dnsupdater.keytab -O /opt/oracle_keytab/dnsupdater.keytab
+fetch_with_retry() {
+    local url=$1
+    local dest=$2
+    local attempts=10
+    local wait_s=3
+
+    for i in $(seq 1 $attempts); do
+        if wget -q "$url" -O "$dest"; then
+            return 0
+        fi
+        echo "Download failed ($i/$attempts): $url"
+        sleep "$wait_s"
+    done
+
+    echo "Failed to download after $attempts attempts: $url"
+    return 1
+}
+
+fetch_with_retry "http://$KDC_IP/artifacts/oracle.keytab" /opt/oracle_keytab/oracle.keytab
+fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /opt/oracle_keytab/krb5.conf
+fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/oracle_keytab/dnsupdater.keytab
 
 # Install Kerberos and DNS tooling for authenticated DNS updates.
 export DEBIAN_FRONTEND=noninteractive
@@ -48,7 +66,10 @@ EOF
 # Register this host in Samba DNS using Kerberos auth and a keytab.
 export KRB5_CONFIG=/opt/oracle_keytab/krb5.conf
 kinit -k -t /opt/oracle_keytab/dnsupdater.keytab dnsupdater@CORP.INTERNAL
-samba-tool dns delete samba-ad-dc corp.internal oracle A $ORACLE_IP -k yes || true
+existing_ips=$(samba-tool dns query samba-ad-dc corp.internal oracle A -k yes 2>/dev/null | awk '/A: / {print $2}')
+for ip in $existing_ips; do
+    samba-tool dns delete samba-ad-dc corp.internal oracle A "$ip" -k yes || true
+done
 samba-tool dns add samba-ad-dc corp.internal oracle A $ORACLE_IP -k yes
 kdestroy || true
 

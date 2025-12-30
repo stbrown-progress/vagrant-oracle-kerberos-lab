@@ -23,7 +23,25 @@ echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 dig +short oracle.corp.internal || true
 
 # --- Pull Kerberos config from the KDC ---
-wget -q http://$KDC_IP/artifacts/krb5.conf -O /etc/krb5.conf
+fetch_with_retry() {
+    local url=$1
+    local dest=$2
+    local attempts=10
+    local wait_s=3
+
+    for i in $(seq 1 $attempts); do
+        if wget -q "$url" -O "$dest"; then
+            return 0
+        fi
+        echo "Download failed ($i/$attempts): $url"
+        sleep "$wait_s"
+    done
+
+    echo "Failed to download after $attempts attempts: $url"
+    return 1
+}
+
+fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /etc/krb5.conf
 
 # --- Prepare Oracle Instant Client layout and env vars ---
 echo "Preparing Oracle Client configuration..."
@@ -87,6 +105,10 @@ dig +short oracle.corp.internal || true
 echo -e "\n--- 2. Requesting TGT ---"
 kdestroy -A 2>/dev/null || true
 echo "StrongPassword123!" | kinit oracleuser@CORP.INTERNAL
+klist
+
+echo -e "\n--- 2a. Requesting a service ticket for Oracle ---"
+kvno oracle/oracle.corp.internal
 klist
 
 echo -e "\n--- 3. Connecting to Oracle via SQLPlus (Kerberos) ---"

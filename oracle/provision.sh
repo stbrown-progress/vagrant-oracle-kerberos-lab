@@ -5,18 +5,23 @@ ORACLE_IP=$(hostname -I | awk '{print $1}')
 
 echo "Configuring Oracle with KDC at $KDC_IP..."
 
-# 1. Hostname Fixes
+# Keep local hostname mappings deterministic for Kerberos and DNS lookups.
 sed -i "/oracle/d" /etc/hosts
 echo "$ORACLE_IP oracle.corp.internal oracle" >> /etc/hosts
 echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 
-# 2. Download Artifacts
-# We fetch the DATA we need from the KDC
+# Download the Kerberos config and keytabs from the KDC.
 mkdir -p /opt/oracle_keytab
 wget -q http://$KDC_IP/artifacts/oracle.keytab -O /opt/oracle_keytab/oracle.keytab
 wget -q http://$KDC_IP/artifacts/krb5.conf -O /opt/oracle_keytab/krb5.conf
+wget -q http://$KDC_IP/artifacts/dnsupdater.keytab -O /opt/oracle_keytab/dnsupdater.keytab
 
-# 3. Generate Oracle Configs (Self-Contained Logic)
+# Install Kerberos and DNS tooling for authenticated DNS updates.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y krb5-user samba-common-bin dnsutils
+
+# Generate Oracle network config files used inside the container.
 mkdir -p /opt/scripts
 
 cat <<EOF > /opt/scripts/sqlnet.ora
@@ -39,6 +44,16 @@ DIAG_ADR_ENABLED=off
 TRACE_DIRECTORY_SERVER=/tmp
 TRACE_FILE_SERVER=server
 EOF
+
+# Register this host in Samba DNS using Kerberos auth and a keytab.
+export KRB5_CONFIG=/opt/oracle_keytab/krb5.conf
+kinit -k -t /opt/oracle_keytab/dnsupdater.keytab dnsupdater@CORP.INTERNAL
+samba-tool dns delete samba-ad-dc corp.internal oracle A $ORACLE_IP -k yes || true
+samba-tool dns add samba-ad-dc corp.internal oracle A $ORACLE_IP -k yes
+kdestroy || true
+
+# Verify DNS registration against the KDC to help diagnose resolution issues.
+dig +short @$KDC_IP oracle.corp.internal || true
 
 cat <<EOF > /opt/scripts/setup-sqlnet.sh
 #!/bin/bash

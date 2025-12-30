@@ -4,25 +4,28 @@ KDC_IP=$1
 
 echo "Configuring Test Client with KDC at $KDC_IP..."
 
-# --- 1. Install Clients & Dependencies ---
+# --- Install client tools for Kerberos and network checks ---
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip
+apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip dnsutils
 
-# --- 2. Switch DNS to KDC ---
+# --- Point DNS at the KDC so domain names resolve via Samba ---
 systemctl stop systemd-resolved
 systemctl disable systemd-resolved
 rm -f /etc/resolv.conf
 echo "nameserver $KDC_IP" > /etc/resolv.conf
 
-# Map KDC Hostname in hosts file
+# Ensure the KDC hostname always resolves locally.
 sed -i "/samba-ad-dc/d" /etc/hosts
 echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 
-# --- 3. Config Kerberos ---
+# Validate DNS resolution through the KDC early for easier troubleshooting.
+dig +short oracle.corp.internal || true
+
+# --- Pull Kerberos config from the KDC ---
 wget -q http://$KDC_IP/artifacts/krb5.conf -O /etc/krb5.conf
 
-# --- 4. Prepare Oracle Instant Client Configs ---
+# --- Prepare Oracle Instant Client layout and env vars ---
 echo "Preparing Oracle Client configuration..."
 
 IC_DIR="/opt/oracle/instantclient"
@@ -33,7 +36,7 @@ mkdir -p /opt/oracle
 echo "export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH" >> /home/vagrant/.bashrc
 echo "export PATH=$IC_DIR:\$PATH" >> /home/vagrant/.bashrc
 
-# --- 4a. Generate Oracle install helper script ---
+# --- Generate Oracle Instant Client install helper script ---
 cat <<'EOF' > /home/vagrant/install-oracle.sh
 #!/bin/bash
 set -e
@@ -59,7 +62,7 @@ EOF
 chmod +x /home/vagrant/install-oracle.sh
 chown vagrant:vagrant /home/vagrant/install-oracle.sh
 
-# --- 5. Client SQLNET Configuration ---
+# --- Configure SQLNET for Kerberos authentication ---
 mkdir -p $IC_DIR/network/admin
 
 cat <<EOF > $IC_DIR/network/admin/sqlnet.ora
@@ -69,7 +72,7 @@ SQLNET.KERBEROS5_CONF = /etc/krb5.conf
 SQLNET.KERBEROS5_CONF_MIT = TRUE
 EOF
 
-# --- 6. Create Test Script ---
+# --- Create a test script for Kerberos and Oracle connectivity ---
 cat <<EOF > /home/vagrant/test_auth.sh
 #!/bin/bash
 export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH
@@ -77,6 +80,9 @@ export PATH=$IC_DIR:\$PATH
 
 echo "--- 1. Testing KDC Connectivity ---"
 nc -zv samba-ad-dc.corp.internal 88
+
+echo -e "\n--- 1a. Validating DNS for Oracle ---"
+dig +short oracle.corp.internal || true
 
 echo -e "\n--- 2. Requesting TGT ---"
 kdestroy -A 2>/dev/null || true

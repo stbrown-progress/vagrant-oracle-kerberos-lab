@@ -17,7 +17,7 @@ rm -f /etc/resolv.conf
 echo "nameserver $KDC_IP" > /etc/resolv.conf
 
 # Download the Kerberos config and keytabs from the KDC.
-mkdir -p /opt/oracle_keytab
+mkdir -p /opt/artifacts
 fetch_with_retry() {
     local url=$1
     local dest=$2
@@ -36,9 +36,9 @@ fetch_with_retry() {
     return 1
 }
 
-fetch_with_retry "http://$KDC_IP/artifacts/oracle.keytab" /opt/oracle_keytab/oracle.keytab
-fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /opt/oracle_keytab/krb5.conf
-fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/oracle_keytab/dnsupdater.keytab
+fetch_with_retry "http://$KDC_IP/artifacts/oracle.keytab" /opt/artifacts/oracle.keytab
+fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /opt/artifacts/krb5.conf
+fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/artifacts/dnsupdater.keytab
 
 # Install Kerberos and DNS tooling for authenticated DNS updates.
 export DEBIAN_FRONTEND=noninteractive
@@ -70,8 +70,8 @@ TRACE_FILE_SERVER=server
 EOF
 
 # Register this host in Samba DNS using Kerberos auth and a keytab.
-export KRB5_CONFIG=/opt/oracle_keytab/krb5.conf
-kinit -k -t /opt/oracle_keytab/dnsupdater.keytab dnsupdater@CORP.INTERNAL
+export KRB5_CONFIG=/opt/artifacts/krb5.conf
+kinit -k -t /opt/artifacts/dnsupdater.keytab dnsupdater@CORP.INTERNAL
 existing_ips=$(samba-tool dns query samba-ad-dc corp.internal oracle A -k yes 2>/dev/null | awk '/A: / {print $2}')
 for ip in $existing_ips; do
     samba-tool dns delete samba-ad-dc corp.internal oracle A "$ip" -k yes || true
@@ -115,7 +115,7 @@ if [ ! "$(docker ps -q -f name=oracle)" ]; then
       --net=host \
       --dns=$KDC_IP \
       -e ORACLE_PASSWORD=Str0ngPassw0rd! \
-      -v /opt/oracle_keytab:/tmp/keytabs \
+      -v /opt/artifacts:/tmp/keytabs \
       -v /opt/scripts:/opt/scripts \
       -v /opt/scripts/sqlnet.ora:/opt/scripts/sqlnet.ora \
       -v /opt/scripts/setup-sqlnet.sh:/docker-entrypoint-initdb.d/setup-sqlnet.sh \

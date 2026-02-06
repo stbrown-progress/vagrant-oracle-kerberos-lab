@@ -40,7 +40,7 @@ echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 # We run this conditionally only if Samba is already running, or we run it after start.
 if systemctl is-active --quiet samba-ad-dc; then
     echo "Samba is running. Forcing DNS update..."
-    samba_dnsupdate --verbose --all-names
+    samba_dnsupdate --verbose --all-names || true
 fi
 
 if [ ! -f /etc/samba/smb.conf.bak ]; then
@@ -72,7 +72,8 @@ sleep 15
 
 # --- Run DNS Update again to be safe ---
 # We run this here to catch the case where we just started Samba for the first time
-samba_dnsupdate --verbose --all-names
+# Partial failures (e.g. ForestDnsZones) are expected with SAMBA_INTERNAL DNS backend
+samba_dnsupdate --verbose --all-names || true
 
 # --- Create service users and enable strong encryption types ---
 if ! samba-tool user list | grep -q "oracleuser"; then

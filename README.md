@@ -27,25 +27,32 @@ A multi-VM Vagrant lab that builds an Oracle Database environment with Kerberos 
 
 ## Quick Start
 
-VMs must be started in order because later VMs depend on the KDC:
+From an **elevated PowerShell** prompt (Hyper-V requires admin):
 
 ```powershell
-# 1. Start the domain controller (writes .kdc_ip for other VMs)
-cd kdc
-vagrant up
+# Bring up all VMs in dependency order (KDC → Oracle → clients)
+.\up.ps1
 
-# 2. Start the Oracle database server
-cd ../oracle
-vagrant up
+# Or start a single VM
+.\up.ps1 oracle
 
-# 3. Start test clients (can be started in parallel)
-cd ../test
-vagrant up
+# Tear down everything
+.\down.ps1
 
-cd ../win-test
-vagrant up
-# After first boot: vagrant reload   (to complete domain join reboot)
+# Tear down a single VM
+.\down.ps1 test
 ```
+
+You can also manage individual VMs directly:
+
+```powershell
+cd kdc
+vagrant up          # start
+vagrant ssh         # connect
+vagrant destroy -f  # tear down
+```
+
+**Note:** After the Windows client's first boot, run `vagrant reload` from `win-test/` to complete the domain join reboot.
 
 ## VMs
 
@@ -132,6 +139,8 @@ Vagrant triggers automatically update the Windows host machine's `hosts` file so
 ```
 vagrant-lab/
 ├── README.md                    # This file
+├── up.ps1                       # Orchestrator: bring up VMs in order
+├── down.ps1                     # Orchestrator: tear down VMs
 ├── .gitignore
 ├── .kdc_ip                      # Auto-generated KDC IP (gitignored)
 ├── lib/

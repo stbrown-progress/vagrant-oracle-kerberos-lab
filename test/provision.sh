@@ -7,7 +7,16 @@ echo "Configuring Test Client with KDC at $KDC_IP..."
 # --- Install client tools for Kerberos and network checks ---
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip dnsutils
+apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip dnsutils chrony
+
+# --- Configure NTP to sync with the KDC ---
+cat <<EOF > /etc/chrony/chrony.conf
+server $KDC_IP iburst
+driftfile /var/lib/chrony/chrony.drift
+makestep 1.0 3
+EOF
+systemctl restart chrony
+systemctl enable chrony
 
 # --- Point DNS at the KDC so domain names resolve via Samba ---
 systemctl stop systemd-resolved
@@ -23,23 +32,7 @@ echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 dig +short oracle.corp.internal || true
 
 # --- Pull Kerberos config from the KDC ---
-fetch_with_retry() {
-    local url=$1
-    local dest=$2
-    local attempts=10
-    local wait_s=3
-
-    for i in $(seq 1 $attempts); do
-        if wget -q "$url" -O "$dest"; then
-            return 0
-        fi
-        echo "Download failed ($i/$attempts): $url"
-        sleep "$wait_s"
-    done
-
-    echo "Failed to download after $attempts attempts: $url"
-    return 1
-}
+source /tmp/fetch_with_retry.sh
 
 fetch_with_retry "http://$KDC_IP/artifacts/krb5.conf" /etc/krb5.conf
 
@@ -50,10 +43,12 @@ IC_DIR="/opt/oracle/instantclient"
 
 mkdir -p /opt/oracle
 
-# Persist env vars for vagrant
-echo "export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH" >> /home/vagrant/.bashrc
-echo "export PATH=$IC_DIR:\$PATH" >> /home/vagrant/.bashrc
-echo "export TNS_ADMIN=$IC_DIR/network/admin" >> /home/vagrant/.bashrc
+# Persist env vars for vagrant (guard against duplicate appends on re-provision)
+if ! grep -q "TNS_ADMIN" /home/vagrant/.bashrc; then
+    echo "export LD_LIBRARY_PATH=$IC_DIR:\$LD_LIBRARY_PATH" >> /home/vagrant/.bashrc
+    echo "export PATH=$IC_DIR:\$PATH" >> /home/vagrant/.bashrc
+    echo "export TNS_ADMIN=$IC_DIR/network/admin" >> /home/vagrant/.bashrc
+fi
 
 # --- Generate Oracle Instant Client install helper script ---
 cat <<'EOF' > /home/vagrant/install-oracle.sh
@@ -119,7 +114,7 @@ kvno oracle/oracle.corp.internal
 klist
 
 echo -e "\n--- Connecting to Oracle via SQLPlus (Kerberos) ---"
-sqlplus -L /@oracle.corp.internal:1521/XEPDB1 <<EXITSQL
+sqlplus -L /@oracle.corp.internal:1521/FREEPDB1 <<EXITSQL
 PROMPT Successfully connected to Oracle!
 SELECT 'Authenticated User: ' || USER FROM DUAL;
 SELECT 'Authentication Method: ' || AUTHENTICATION_METHOD

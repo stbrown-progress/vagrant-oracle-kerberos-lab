@@ -5,29 +5,33 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Configuring Windows Client with KDC at $KdcIp..."
+Write-Host "--- Configuring Windows Client ---"
+Write-Host "Target KDC IP: $KdcIp"
 
-# --- 1. Network & DNS ---
 # Point DNS to the Samba AD DC so we can resolve oracle.corp.internal
 Write-Host "Setting DNS to $KdcIp..."
 Get-NetAdapter | Set-DnsClientServerAddress -ServerAddresses $KdcIp
 
-# Add KDC to hosts file for backup resolution
-$hostsPath = "$env:windir\System32\drivers\etc\hosts"
-if (-not (Select-String -Path $hostsPath -Pattern "samba-ad-dc.corp.internal")) {
-    Add-Content -Path $hostsPath -Value "$KdcIp samba-ad-dc.corp.internal samba-ad-dc"
-    Write-Host "Added KDC to hosts file."
+# Prevent Windows from marking the network as "Public" and blocking WinRM
+Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+
+# Clear DNS cache to ensure we don't hold onto old records
+Clear-DnsClientCache
+
+# Connectivity Check
+Write-Host "Testing connectivity to KDC..."
+if (-not (Test-Connection -ComputerName $KdcIp -Count 1 -Quiet)) {
+    Write-Error "Cannot ping KDC at $KdcIp. Check Hyper-V switches."
 }
 
-# --- 2. Kerberos Configuration ---
-# Even for domain-joined machines, having the config helps Oracle resolve realms correctly.
+# Kerberos configuration
 $krbUrl = "http://$KdcIp/artifacts/krb5.conf"
 $destPath = "$env:SystemDrive\krb5.ini" 
 
-Write-Host "Downloading krb5.conf from $krbUrl..."
 try {
     # Save directly to C:\krb5.ini so it is accessible to all users (including SYSTEM services)
-    Invoke-WebRequest -Uri $krbUrl -OutFile $destPath
+    Invoke-WebRequest -Uri $krbUrl -OutFile $destPath -UseBasicParsing
+    Write-Host "Downloaded krb5.ini successfully."
 }
 catch {
     Write-Warning "Failed to download krb5.conf. Ensure KDC is up."
@@ -44,65 +48,21 @@ if ($sysInfo.PartOfDomain) {
 }
 else {
     Write-Host "Joining domain $domainName..."
+
+    # Verify DNS resolution first
+    try {
+        $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
+        Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
+    }
+    catch {
+        Write-Error "Cannot resolve samba-ad-dc.corp.internal. Domain Join will fail."
+    }
+
     $secPass = ConvertTo-SecureString $adminPass -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential("$domainName\$adminUser", $secPass)
     
-    # We do NOT use -Restart here because it breaks the Vagrant provisioning flow.
-    # We will instruct the user to reload instead.
     Add-Computer -DomainName $domainName -Credential $cred -Force
     
-    Write-Warning "######################################################"
-    Write-Warning " DOMAIN JOIN SUCCESSFUL - REBOOT REQUIRED"
-    Write-Warning " Please run 'vagrant reload' to apply changes."
-    Write-Warning "######################################################"
+    Write-Warning "!!! DOMAIN JOIN SUCCESSFUL !!!"
+    Write-Warning "You must run 'vagrant reload' to reboot and apply changes."
 }
-
-# --- 4. Prepare Oracle Configuration ---
-$oracleBase = "C:\oracle"
-$icName = "instantclient_19_24"
-$icPath = "$oracleBase\$icName"
-
-New-Item -ItemType Directory -Force -Path "$icPath\network\admin" | Out-Null
-
-# Generate sqlnet.ora
-# Key Change: MSLSA cache allows Oracle to use the Windows Logon TGT
-$sqlnetContent = @"
-# Client-side SQLNET.ORA for Domain Joined Windows
-NAMES.DIRECTORY_PATH= (TNSNAMES, EZCONNECT, HOSTNAME)
-SQLNET.AUTHENTICATION_SERVICES = (KERBEROS5)
-SQLNET.KERBEROS5_CONF = $destPath
-SQLNET.KERBEROS5_CONF_MIT = TRUE
-# Critical for domain joined usage: Use the Microsoft Logon Session Cache
-SQLNET.KERBEROS5_CC_NAME = MSLSA:
-"@
-Set-Content -Path "$icPath\network\admin\sqlnet.ora" -Value $sqlnetContent
-
-# --- 5. Create Test Script ---
-$testScriptPath = "C:\Users\Public\Desktop\test_auth.ps1"
-
-$testScript = @"
-Write-Host "--- Testing Oracle Kerberos (Domain Joined) ---"
-
-# 1. Set Environment Variables
-`$Env:PATH = "$icPath;`$Env:PATH"
-
-# 2. Check Auth Status
-Write-Host "Checking Current User..."
-whoami
-Write-Host "Checking Kerberos Tickets (klist)..."
-klist
-
-# 3. Connect
-Write-Host "Connecting to Oracle..."
-# Note: We rely on the OS user ticket, so we just use /
-sqlplus /@oracle.corp.internal:1521/XEPDB1
-
-"@
-
-New-Item -ItemType Directory -Force -Path "C:\Users\Public\Desktop" | Out-Null
-Set-Content -Path $testScriptPath -Value $testScript
-
-Write-Host "Provisioning Complete."
-Write-Host "1. Unzip Oracle Instant Client to $icPath"
-Write-Host "2. If you just joined the domain, run 'vagrant reload'"
-Write-Host "3. Log in as CORP\oracleuser (Password: StrongPassword123!)"

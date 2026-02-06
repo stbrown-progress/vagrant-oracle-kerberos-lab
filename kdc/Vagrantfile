@@ -1,4 +1,4 @@
-require "base64"
+require_relative "../lib/hosts_trigger"
 
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/ubuntu2204"
@@ -13,46 +13,18 @@ Vagrant.configure("2") do |config|
   end
 
   # The heavy lifting happens inside the VM
-  config.vm.provision "shell", path: "provision.sh"
+  config.vm.provision "shell", path: "provision.sh", run: "always"
 
   # --- VAGRANT NATIVE STATE PASSING ---
   # Write the IP to a hidden file in the project root
   config.trigger.after :up do |trigger|
     trigger.ruby do |env,machine|
-      # Get the IP from the SSH info
       ip = machine.ssh_info[:host]
-      
-      # Write IP directly to the parent folder
       File.write('../.kdc_ip', ip)
-      
-      # Print success message to console
-      puts "✅ KDC IP [#{ip}] saved to .kdc_ip"
-    end
-  end
-  # Update Windows hosts file to allow name-based access from the host.
-  config.trigger.after :up do |trigger|
-    trigger.ruby do |env, machine|
-      ip = machine.ssh_info[:host]
-      hostnames = "samba-ad-dc.corp.internal samba-ad-dc"
-      ps = <<~POWERSHELL
-        $path = "$env:SystemRoot\\System32\\drivers\\etc\\hosts"
-        $entry = "#{ip} #{hostnames}"
-        $content = @()
-        if (Test-Path $path) {
-          $item = Get-Item $path
-          if ($item.Attributes -band [IO.FileAttributes]::ReadOnly) {
-            $item.Attributes = $item.Attributes -bxor [IO.FileAttributes]::ReadOnly
-          }
-          Copy-Item -Path $path -Destination "$path.bak" -Force
-          $content = Get-Content $path
-        }
-        $content = $content | Where-Object { $_ -notmatch 'samba-ad-dc(\.corp\.internal)?' }
-        $content += $entry
-        Set-Content -Path $path -Value $content -Encoding ASCII -Force
-      POWERSHELL
-      encoded = Base64.strict_encode64(ps.encode("UTF-16LE"))
-      system("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand #{encoded}")
+      puts "KDC IP [#{ip}] saved to .kdc_ip"
     end
   end
 
+  # Update/clean Windows hosts file for name-based access from the host
+  HostsTrigger.register(config, "samba-ad-dc.corp.internal samba-ad-dc", /\bsamba-ad-dc\.corp\.internal\b/)
 end

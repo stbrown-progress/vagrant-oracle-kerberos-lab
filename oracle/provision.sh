@@ -5,11 +5,6 @@ ORACLE_IP=$(hostname -I | awk '{print $1}')
 
 echo "Configuring Oracle with KDC at $KDC_IP..."
 
-# Keep local hostname mappings deterministic for Kerberos and DNS lookups.
-sed -i "/oracle/d" /etc/hosts
-echo "$ORACLE_IP oracle.corp.internal oracle" >> /etc/hosts
-echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
-
 # Point DNS at the KDC so Kerberos realm lookups work consistently.
 systemctl stop systemd-resolved
 systemctl disable systemd-resolved
@@ -18,23 +13,7 @@ echo "nameserver $KDC_IP" > /etc/resolv.conf
 
 # Download the Kerberos config and keytabs from the KDC.
 mkdir -p /opt/artifacts
-fetch_with_retry() {
-    local url=$1
-    local dest=$2
-    local attempts=10
-    local wait_s=3
-
-    for i in $(seq 1 $attempts); do
-        if wget -q "$url" -O "$dest"; then
-            return 0
-        fi
-        echo "Download failed ($i/$attempts): $url"
-        sleep "$wait_s"
-    done
-
-    echo "Failed to download after $attempts attempts: $url"
-    return 1
-}
+source /tmp/fetch_with_retry.sh
 
 fetch_with_retry "http://$KDC_IP/artifacts/oracle.keytab" /opt/artifacts/oracle.keytab
 fetch_with_retry "http://$KDC_IP/artifacts/oracleuser.keytab" /opt/artifacts/oracleuser.keytab
@@ -44,7 +23,16 @@ fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/artifacts/dns
 # Install Kerberos and DNS tooling for authenticated DNS updates.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y krb5-user samba-common-bin dnsutils
+apt-get install -y krb5-user samba-common-bin dnsutils chrony
+
+# --- Configure NTP to sync with the KDC ---
+cat <<EOF > /etc/chrony/chrony.conf
+server $KDC_IP iburst
+driftfile /var/lib/chrony/chrony.drift
+makestep 1.0 3
+EOF
+systemctl restart chrony
+systemctl enable chrony
 
 # Generate Oracle network config files used inside the container.
 mkdir -p /opt/scripts
@@ -98,9 +86,6 @@ targets=()
 if [ -n "\$ORACLE_HOME" ]; then
   targets+=("\$ORACLE_HOME/network/admin")
 fi
-if [ -d "/opt/oracle/homes/OraDBHome21cXE/network/admin" ]; then
-  targets+=("/opt/oracle/homes/OraDBHome21cXE/network/admin")
-fi
 
 for dir in "\${targets[@]}"; do
   mkdir -p "\$dir"
@@ -110,7 +95,7 @@ EOF
 chmod +x /opt/scripts/setup-sqlnet.sh
 
 cat <<EOF > /opt/scripts/create_test_user.sql
-ALTER SESSION SET CONTAINER = XEPDB1;
+ALTER SESSION SET CONTAINER = FREEPDB1;
 CREATE USER testuser IDENTIFIED BY testpassword;
 GRANT CONNECT, RESOURCE TO testuser;
 CREATE USER "oracleuser@CORP.INTERNAL" IDENTIFIED EXTERNALLY AS 'oracleuser@CORP.INTERNAL';
@@ -134,14 +119,13 @@ if [ ! "$(docker ps -q -f name=oracle)" ]; then
     docker run -d --name oracle \
       --restart unless-stopped \
       --net=host \
-      --dns=$KDC_IP \
-      -e ORACLE_PASSWORD=Str0ngPassw0rd! \
+      -e ORACLE_PWD=Str0ngPassw0rd! \
       -v /opt/artifacts:/tmp/keytabs \
       -v /opt/scripts:/opt/scripts \
       -v /opt/scripts/sqlnet.ora:/opt/scripts/sqlnet.ora \
       -v /opt/scripts/setup-sqlnet.sh:/docker-entrypoint-initdb.d/setup-sqlnet.sh \
       -v /opt/scripts/create_test_user.sql:/docker-entrypoint-initdb.d/create_test_user.sql \
-      gvenzl/oracle-xe:21-slim
+      container-registry.oracle.com/database/free:latest
 else
     echo "Oracle is running."
 fi

@@ -1,9 +1,9 @@
-require "base64"
+require_relative "../lib/hosts_trigger"
 
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/ubuntu2204"
   config.vm.network "public_network"
-  
+
   config.vm.provider "hyperv" do |hv|
     hv.vmname = "test-client"
     hv.memory = 1024
@@ -17,31 +17,10 @@ Vagrant.configure("2") do |config|
     kdc_ip = File.read('../.kdc_ip').strip
   end
 
-  config.vm.provision "shell", path: "provision.sh", args: [kdc_ip]
-  # Update Windows hosts file to allow name-based access from the host.
-  config.trigger.after :up do |trigger|
-    trigger.ruby do |env, machine|
-      ip = machine.ssh_info[:host]
-      hostnames = "test-client.corp.internal test-client"
-      ps = <<~POWERSHELL
-        $path = "$env:SystemRoot\\System32\\drivers\\etc\\hosts"
-        $entry = "#{ip} #{hostnames}"
-        $content = @()
-        if (Test-Path $path) {
-          $item = Get-Item $path
-          if ($item.Attributes -band [IO.FileAttributes]::ReadOnly) {
-            $item.Attributes = $item.Attributes -bxor [IO.FileAttributes]::ReadOnly
-          }
-          Copy-Item -Path $path -Destination "$path.bak" -Force
-          $content = Get-Content $path
-        }
-        $content = $content | Where-Object { $_ -notmatch 'test-client(\.corp\.internal)?' }
-        $content += $entry
-        Set-Content -Path $path -Value $content -Encoding ASCII -Force
-      POWERSHELL
-      encoded = Base64.strict_encode64(ps.encode("UTF-16LE"))
-      system("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand #{encoded}")
-    end
-  end
+  # Upload shared helpers, then run provisioning
+  config.vm.provision "file", source: "../lib/fetch_with_retry.sh", destination: "/tmp/fetch_with_retry.sh", run: "always"
+  config.vm.provision "shell", path: "provision.sh", args: [kdc_ip], run: "always"
 
+  # Update/clean Windows hosts file for name-based access from the host
+  HostsTrigger.register(config, "test-client.corp.internal test-client", /\btest-client\.corp\.internal\b/)
 end

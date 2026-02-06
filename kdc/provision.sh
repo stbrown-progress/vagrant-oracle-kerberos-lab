@@ -4,7 +4,20 @@ set -e
 # --- Install dependencies needed for Samba AD DC, Kerberos, and DNS ---
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y samba krb5-user winbind smbclient dnsutils iproute2 net-tools ldb-tools ldap-utils libsasl2-modules-gssapi-mit nginx
+apt-get install -y samba krb5-user winbind smbclient dnsutils iproute2 net-tools ldb-tools ldap-utils libsasl2-modules-gssapi-mit nginx chrony
+
+# --- Configure NTP so Kerberos clock-skew stays under 5 minutes ---
+cat <<EOF > /etc/chrony/chrony.conf
+server pool.ntp.org iburst
+allow 192.168.0.0/16
+allow 172.16.0.0/12
+allow 10.0.0.0/8
+local stratum 10
+driftfile /var/lib/chrony/chrony.drift
+makestep 1.0 3
+EOF
+systemctl restart chrony
+systemctl enable chrony
 
 # --- Configure local DNS to use Samba's internal DNS ---
 systemctl stop systemd-resolved
@@ -12,19 +25,34 @@ systemctl disable systemd-resolved
 rm -f /etc/resolv.conf
 echo "nameserver 127.0.0.1" > /etc/resolv.conf
 
+# Get the current IP (grabbing the first non-loopback IP)
 KDC_IP=$(hostname -I | awk '{print $1}')
-sed -i "s/127.0.0.1 localhost/127.0.0.1 localhost\n$KDC_IP samba-ad-dc.corp.internal samba-ad-dc/" /etc/hosts
+echo "Current Machine IP detected as: $KDC_IP"
 
-# --- Provision Samba AD domain if not already provisioned ---
-systemctl stop smbd nmbd winbind
-systemctl disable smbd nmbd winbind
-systemctl unmask samba-ad-dc
+# Clean /etc/hosts: Remove any existing lines for the KDC to prevent duplicates
+sed -i '/samba-ad-dc.corp.internal/d' /etc/hosts
+
+# Add the clean, current IP entry
+echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
+
+# Force Samba to update its internal DNS records to match the new IP
+# This command tells Samba: "Look at my network interfaces and update DNS to match."
+# We run this conditionally only if Samba is already running, or we run it after start.
+if systemctl is-active --quiet samba-ad-dc; then
+    echo "Samba is running. Forcing DNS update..."
+    samba_dnsupdate --verbose --all-names
+fi
 
 if [ ! -f /etc/samba/smb.conf.bak ]; then
     echo "Provisioning Domain..."
+
+    # --- Provision Samba AD domain if not already provisioned ---
+    systemctl stop smbd nmbd winbind
+    systemctl disable smbd nmbd winbind
+    systemctl unmask samba-ad-dc
+
     mv /etc/samba/smb.conf /etc/samba/smb.conf.bak
     
-    # CRITICAL FIX: Added "dns forwarder" so clients can resolve internet domains via the KDC
     samba-tool domain provision \
         --use-rfc2307 \
         --realm=CORP.INTERNAL \
@@ -37,9 +65,14 @@ if [ ! -f /etc/samba/smb.conf.bak ]; then
     cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 fi
 
+# Ensure Samba is running
 systemctl enable samba-ad-dc
 systemctl restart samba-ad-dc
 sleep 15
+
+# --- Run DNS Update again to be safe ---
+# We run this here to catch the case where we just started Samba for the first time
+samba_dnsupdate --verbose --all-names
 
 # --- Create service users and enable strong encryption types ---
 if ! samba-tool user list | grep -q "oracleuser"; then
@@ -69,10 +102,36 @@ EOF
 # --- Export keytabs and krb5.conf for other nodes to download ---
 mkdir -p /var/www/html/artifacts
 cp /etc/krb5.conf /var/www/html/artifacts/krb5.conf
+# Remove stale keytabs before export to prevent duplicate entries on re-provision
+rm -f /var/www/html/artifacts/*.keytab
 samba-tool domain exportkeytab --principal=oracle/oracle.corp.internal@CORP.INTERNAL /var/www/html/artifacts/oracle.keytab
 samba-tool domain exportkeytab --principal=oracleuser@CORP.INTERNAL /var/www/html/artifacts/oracleuser.keytab
 samba-tool domain exportkeytab --principal=dnsupdater@CORP.INTERNAL /var/www/html/artifacts/dnsupdater.keytab
 chmod 644 /var/www/html/artifacts/*
+
+# --- Configure Nginx to allow directory listing ---
+# We overwrite the default config to enable 'autoindex on'
+cat <<EOF > /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # The root directory where we put the artifacts
+    root /var/www/html;
+    
+    index index.html index.htm;
+    server_name _;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+        # ENABLE DIRECTORY LISTING
+        autoindex on;
+        autoindex_exact_size on;
+        autoindex_localtime on;
+    }
+}
+EOF
+
 systemctl restart nginx
 
 echo "SPNs for oracleuser:"
@@ -81,3 +140,5 @@ echo "Keytab principals for oracle.keytab:"
 klist -k /var/www/html/artifacts/oracle.keytab || true
 echo "Keytab principals for oracleuser.keytab:"
 klist -k /var/www/html/artifacts/oracleuser.keytab || true
+
+echo "Provisioning Complete. IP is $KDC_IP"

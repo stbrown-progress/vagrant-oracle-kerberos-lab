@@ -1,0 +1,11 @@
+ServerName=oracle.corp.internal
+PortNumber=1521
+AuthenticationMethod=UserIDPassword
+User=testuser
+Password=testpassword
+ServiceName=FREEPDB1
+ConnectionRetryCount=0
+DataIntegrityLevel=required
+EncryptionLevel=required
+connect
+select user, sys_context('userenv','authentication_method') "AUTH_METHOD", sys_context('userenv','authenticated_identity') "IDENTITY" from dual;

@@ -26,10 +26,9 @@ if (-not (Test-Connection -ComputerName $KdcIp -Count 1 -Quiet)) {
 
 # Kerberos configuration
 $krbUrl = "http://$KdcIp/artifacts/krb5.conf"
-$destPath = "$env:SystemDrive\krb5.ini" 
+$destPath = "$env:SystemDrive\krb5.ini"
 
 try {
-    # Save directly to C:\krb5.ini so it is accessible to all users (including SYSTEM services)
     Invoke-WebRequest -Uri $krbUrl -OutFile $destPath -UseBasicParsing
     Write-Host "Downloaded krb5.ini successfully."
 }
@@ -37,10 +36,10 @@ catch {
     Write-Warning "Failed to download krb5.conf. Ensure KDC is up."
 }
 
-# --- 3. Domain Join ---
+# --- Domain Join ---
 $domainName = "CORP.INTERNAL"
 $adminUser = "Administrator"
-$adminPass = "Str0ngPassw0rd!" # Matches the password set in KDC provision.sh
+$adminPass = "Str0ngPassw0rd!"
 
 $sysInfo = Get-CimInstance Win32_ComputerSystem
 if ($sysInfo.PartOfDomain) {
@@ -49,20 +48,30 @@ if ($sysInfo.PartOfDomain) {
 else {
     Write-Host "Joining domain $domainName..."
 
-    # Verify DNS resolution first
-    try {
-        $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
-        Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
+    # Wait for DNS to start resolving via the KDC (adapter change can take a moment)
+    $resolved = $false
+    for ($i = 1; $i -le 10; $i++) {
+        try {
+            $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
+            Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
+            $resolved = $true
+            break
+        }
+        catch {
+            Write-Host "DNS not ready yet ($i/10), retrying in 3s..."
+            Start-Sleep -Seconds 3
+        }
     }
-    catch {
-        Write-Error "Cannot resolve samba-ad-dc.corp.internal. Domain Join will fail."
+
+    if (-not $resolved) {
+        Write-Error "Cannot resolve samba-ad-dc.corp.internal after 10 attempts. Domain Join will fail."
     }
 
     $secPass = ConvertTo-SecureString $adminPass -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential("$domainName\$adminUser", $secPass)
-    
+
     Add-Computer -DomainName $domainName -Credential $cred -Force
-    
+
     Write-Warning "!!! DOMAIN JOIN SUCCESSFUL !!!"
     Write-Warning "You must run 'vagrant reload' to reboot and apply changes."
 }

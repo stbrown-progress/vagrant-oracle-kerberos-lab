@@ -94,14 +94,6 @@ done
 EOF
 chmod +x /opt/scripts/setup-sqlnet.sh
 
-cat <<EOF > /opt/scripts/create_test_user.sql
-ALTER SESSION SET CONTAINER = FREEPDB1;
-CREATE USER testuser IDENTIFIED BY testpassword;
-GRANT CONNECT, RESOURCE TO testuser;
-CREATE USER "oracleuser@CORP.INTERNAL" IDENTIFIED EXTERNALLY AS 'oracleuser@CORP.INTERNAL';
-GRANT CONNECT, RESOURCE TO "oracleuser@CORP.INTERNAL";
-EOF
-
 # Install Docker
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -114,7 +106,7 @@ fi
 # Run Container
 if [ ! "$(docker ps -q -f name=oracle)" ]; then
     if [ "$(docker ps -aq -f name=oracle)" ]; then docker rm oracle; fi
-    
+
     echo "Starting Oracle Container..."
     docker run -d --name oracle \
       --restart unless-stopped \
@@ -124,8 +116,87 @@ if [ ! "$(docker ps -q -f name=oracle)" ]; then
       -v /opt/scripts:/opt/scripts \
       -v /opt/scripts/sqlnet.ora:/opt/scripts/sqlnet.ora \
       -v /opt/scripts/setup-sqlnet.sh:/docker-entrypoint-initdb.d/setup-sqlnet.sh \
-      -v /opt/scripts/create_test_user.sql:/docker-entrypoint-initdb.d/create_test_user.sql \
       container-registry.oracle.com/database/free:latest
 else
     echo "Oracle is running."
 fi
+
+# Write SQL helper scripts to the shared volume so docker exec can run them.
+cat <<'EOF' > /opt/scripts/check_cdb.sql
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+SELECT 1 FROM DUAL;
+EXIT;
+EOF
+
+cat <<'EOF' > /opt/scripts/check_pdb.sql
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+SELECT open_mode FROM v$pdbs WHERE name='FREEPDB1';
+EXIT;
+EOF
+
+cat <<'EOF' > /opt/scripts/create_users.sql
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
+DECLARE
+  v_count NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_count FROM all_users WHERE username = 'TESTUSER';
+  IF v_count = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER testuser IDENTIFIED BY testpassword';
+    EXECUTE IMMEDIATE 'GRANT CONNECT, RESOURCE TO testuser';
+    DBMS_OUTPUT.PUT_LINE('Created testuser');
+  END IF;
+END;
+/
+
+DECLARE
+  v_count NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_count FROM all_users WHERE username = 'ORACLEUSER@CORP.INTERNAL';
+  IF v_count = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER "oracleuser@CORP.INTERNAL" IDENTIFIED EXTERNALLY AS ''oracleuser@CORP.INTERNAL''';
+    EXECUTE IMMEDIATE 'GRANT CONNECT, RESOURCE TO "oracleuser@CORP.INTERNAL"';
+    DBMS_OUTPUT.PUT_LINE('Created oracleuser@CORP.INTERNAL');
+  END IF;
+END;
+/
+
+SELECT username FROM all_users WHERE username IN ('TESTUSER', 'ORACLEUSER@CORP.INTERNAL');
+EXIT;
+EOF
+
+# Wait for the DB to be fully ready before creating users.
+# The entrypoint-initdb scripts are unreliable for PDB operations because
+# the PDB may not be open yet when they run.
+echo "Waiting for Oracle DB to be ready (this may take several minutes on first run)..."
+for i in $(seq 1 60); do
+    if docker exec oracle sqlplus -s / as sysdba @/opt/scripts/check_cdb.sql > /dev/null 2>&1; then
+        echo "Oracle CDB is up after ${i}0 seconds."
+        break
+    fi
+    sleep 10
+done
+
+# Wait for FREEPDB1 to be open
+for i in $(seq 1 30); do
+    status=$(docker exec oracle sqlplus -s / as sysdba @/opt/scripts/check_pdb.sql 2>/dev/null | grep -o "READ WRITE" || true)
+    if [ "$status" = "READ WRITE" ]; then
+        echo "FREEPDB1 is open."
+        break
+    fi
+    echo "Waiting for FREEPDB1 to open ($i/30)..."
+    sleep 10
+done
+
+# Deploy sqlnet.ora inside the container
+docker exec oracle bash -c '
+if [ -n "$ORACLE_HOME" ]; then
+    mkdir -p "$ORACLE_HOME/network/admin"
+    cp /opt/scripts/sqlnet.ora "$ORACLE_HOME/network/admin/sqlnet.ora"
+fi
+'
+
+# Create test users (idempotent — skips if they already exist)
+docker exec oracle sqlplus -s / as sysdba @/opt/scripts/create_users.sql
+
+echo "Oracle setup complete."

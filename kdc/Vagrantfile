@@ -26,5 +26,5 @@ Vagrant.configure("2") do |config|
   end
 
   # Update/clean Windows hosts file for name-based access from the host
-  HostsTrigger.register(config, "samba-ad-dc.corp.internal samba-ad-dc", /\bsamba-ad-dc\.corp\.internal\b/)
+  HostsTrigger.register(config, "samba-ad-dc.corp.internal samba-ad-dc")
 end

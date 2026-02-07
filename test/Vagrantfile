@@ -22,5 +22,5 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", path: "provision.sh", args: [kdc_ip], run: "always"
 
   # Update/clean Windows hosts file for name-based access from the host
-  HostsTrigger.register(config, "test-client.corp.internal test-client", /\btest-client\.corp\.internal\b/)
+  HostsTrigger.register(config, "test-client.corp.internal test-client")
 end

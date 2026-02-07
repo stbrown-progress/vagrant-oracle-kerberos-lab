@@ -77,20 +77,23 @@ klist -k /opt/artifacts/oracle.keytab || true
 klist -k /opt/artifacts/oracleuser.keytab || true
 kvno oracle/oracle.corp.internal || true
 
-cat <<EOF > /opt/scripts/setup-sqlnet.sh
+cat <<'EOF' > /opt/scripts/setup-sqlnet.sh
 #!/bin/bash
 set -e
 
-# Ensure sqlnet.ora is placed where the image actually reads it.
-targets=()
-if [ -n "\$ORACLE_HOME" ]; then
-  targets+=("\$ORACLE_HOME/network/admin")
+# Detect ORACLE_HOME — entrypoint scripts may run as oracle or root.
+OH="$ORACLE_HOME"
+if [ -z "$OH" ]; then
+    OH=$(ls -d /opt/oracle/product/*/dbhome* 2>/dev/null | head -1)
 fi
 
-for dir in "\${targets[@]}"; do
-  mkdir -p "\$dir"
-  cp /opt/scripts/sqlnet.ora "\$dir/sqlnet.ora"
-done
+if [ -n "$OH" ]; then
+    mkdir -p "$OH/network/admin"
+    cp /opt/scripts/sqlnet.ora "$OH/network/admin/sqlnet.ora"
+    echo "setup-sqlnet.sh: deployed sqlnet.ora to $OH/network/admin/"
+else
+    echo "setup-sqlnet.sh: WARNING — could not determine ORACLE_HOME"
+fi
 EOF
 chmod +x /opt/scripts/setup-sqlnet.sh
 
@@ -188,11 +191,20 @@ for i in $(seq 1 30); do
     sleep 10
 done
 
-# Deploy sqlnet.ora inside the container
+# Deploy sqlnet.ora inside the container.
+# docker exec runs as root without Oracle's profile, so $ORACLE_HOME may be
+# unset.  Detect it from the oracle user's environment instead.
 docker exec oracle bash -c '
-if [ -n "$ORACLE_HOME" ]; then
-    mkdir -p "$ORACLE_HOME/network/admin"
-    cp /opt/scripts/sqlnet.ora "$ORACLE_HOME/network/admin/sqlnet.ora"
+OH=$(su - oracle -c "echo \$ORACLE_HOME" 2>/dev/null)
+if [ -z "$OH" ]; then
+    OH=$(ls -d /opt/oracle/product/*/dbhome* 2>/dev/null | head -1)
+fi
+if [ -n "$OH" ]; then
+    mkdir -p "$OH/network/admin"
+    cp /opt/scripts/sqlnet.ora "$OH/network/admin/sqlnet.ora"
+    echo "Deployed sqlnet.ora to $OH/network/admin/"
+else
+    echo "WARNING: Could not determine ORACLE_HOME inside container"
 fi
 '
 

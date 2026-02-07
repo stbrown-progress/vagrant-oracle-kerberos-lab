@@ -35,12 +35,16 @@ sed -i '/samba-ad-dc.corp.internal/d' /etc/hosts
 # Add the clean, current IP entry
 echo "$KDC_IP samba-ad-dc.corp.internal samba-ad-dc" >> /etc/hosts
 
-# Force Samba to update its internal DNS records to match the new IP
-# This command tells Samba: "Look at my network interfaces and update DNS to match."
-# We run this conditionally only if Samba is already running, or we run it after start.
+# If Samba is already running (re-provision), update the A record to match the current IP.
+# We use samba-tool dns directly instead of samba_dnsupdate (which is very slow due to
+# TSIG failures against the SAMBA_INTERNAL DNS backend).
 if systemctl is-active --quiet samba-ad-dc; then
-    echo "Samba is running. Forcing DNS update..."
-    samba_dnsupdate --verbose --all-names || true
+    echo "Samba is running. Updating A record for samba-ad-dc..."
+    existing_ips=$(samba-tool dns query localhost corp.internal samba-ad-dc A -U Administrator --password='Str0ngPassw0rd!' 2>/dev/null | awk '/A: / {print $2}') || true
+    for old_ip in $existing_ips; do
+        samba-tool dns delete localhost corp.internal samba-ad-dc A "$old_ip" -U Administrator --password='Str0ngPassw0rd!' || true
+    done
+    samba-tool dns add localhost corp.internal samba-ad-dc A "$KDC_IP" -U Administrator --password='Str0ngPassw0rd!' || true
 fi
 
 if [ ! -f /etc/samba/smb.conf.bak ]; then
@@ -70,10 +74,13 @@ systemctl enable samba-ad-dc
 systemctl restart samba-ad-dc
 sleep 15
 
-# --- Run DNS Update again to be safe ---
-# We run this here to catch the case where we just started Samba for the first time
-# Partial failures (e.g. ForestDnsZones) are expected with SAMBA_INTERNAL DNS backend
-samba_dnsupdate --verbose --all-names || true
+# --- Ensure the KDC A record is correct after (re)start ---
+echo "Registering A record: samba-ad-dc -> $KDC_IP"
+existing_ips=$(samba-tool dns query localhost corp.internal samba-ad-dc A -U Administrator --password='Str0ngPassw0rd!' 2>/dev/null | awk '/A: / {print $2}') || true
+for old_ip in $existing_ips; do
+    samba-tool dns delete localhost corp.internal samba-ad-dc A "$old_ip" -U Administrator --password='Str0ngPassw0rd!' || true
+done
+samba-tool dns add localhost corp.internal samba-ad-dc A "$KDC_IP" -U Administrator --password='Str0ngPassw0rd!' || true
 
 # --- Create service users and enable strong encryption types ---
 if ! samba-tool user list | grep -q "oracleuser"; then

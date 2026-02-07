@@ -3,7 +3,7 @@
 .SYNOPSIS
     Brings up Vagrant VMs in dependency order.
 .DESCRIPTION
-    Starts the KDC first, then Oracle, then test clients in parallel.
+    Starts the KDC first, then Oracle, then test clients.
     Pass a VM name to start just one: .\up.ps1 oracle
 .PARAMETER Name
     Optional VM name: kdc, oracle, test, win-test
@@ -40,23 +40,8 @@ Start-VM "kdc"
 # 2. Oracle depends on KDC for DNS registration and keytabs
 Start-VM "oracle"
 
-# 3. Test clients only need the KDC — start them in parallel
-Write-Host "`n=== Starting test clients in parallel ===" -ForegroundColor Cyan
-$jobs = @()
-$jobs += Start-Job -ScriptBlock {
-    param($Dir)
-    Set-Location $Dir
-    vagrant up --provider=hyperv 2>&1
-} -ArgumentList (Join-Path $Root "test")
-
-$jobs += Start-Job -ScriptBlock {
-    param($Dir)
-    Set-Location $Dir
-    vagrant up --provider=hyperv 2>&1
-} -ArgumentList (Join-Path $Root "win-test")
-
-$jobs | ForEach-Object {
-    $_ | Receive-Job -Wait -AutoRemoveJob
-}
+# 3. Test clients (sequential — Hyper-V switch prompt requires interactive input)
+Start-VM "test"
+Start-VM "win-test"
 
 Write-Host "`n=== All VMs started ===" -ForegroundColor Green

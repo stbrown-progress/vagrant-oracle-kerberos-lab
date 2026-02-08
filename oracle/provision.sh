@@ -236,6 +236,7 @@ EOF
 
 cp /tmp/dashboard-common.sh /usr/local/lib/dashboard-common.sh
 cp /tmp/dashboard-vm.sh /usr/local/lib/dashboard-vm.sh
+sed -i 's/\r$//' /usr/local/lib/dashboard-common.sh /usr/local/lib/dashboard-vm.sh
 chmod +x /usr/local/lib/dashboard-vm.sh
 
 mkdir -p /etc/systemd/system/fcgiwrap.service.d
@@ -245,8 +246,9 @@ User=root
 Group=root
 EOF
 systemctl daemon-reload
-systemctl enable fcgiwrap
-systemctl restart fcgiwrap
+systemctl stop fcgiwrap.service fcgiwrap.socket 2>/dev/null || true
+systemctl enable fcgiwrap.socket
+systemctl start fcgiwrap.socket
 systemctl enable nginx
 systemctl restart nginx
 

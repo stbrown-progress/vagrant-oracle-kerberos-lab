@@ -7,7 +7,7 @@ echo "Configuring Test Client with KDC at $KDC_IP..."
 # --- Install client tools for Kerberos, network checks, and Java ---
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip dnsutils chrony default-jdk
+apt-get install -y krb5-user libaio1 iputils-ping netcat wget unzip dnsutils chrony default-jdk nginx fcgiwrap
 
 # --- Configure NTP to sync with the KDC ---
 cat <<EOF > /etc/chrony/chrony.conf
@@ -68,7 +68,47 @@ done
 mkdir -p "$IC_DIR/network/admin"
 cp /tmp/lib/sqlnet-client.ora "$IC_DIR/network/admin/sqlnet.ora"
 
+# --- Deploy Status Dashboard ---
+cat <<'EOF' > /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    root /var/www/html;
+    index index.html;
+    server_name _;
+
+    location / {
+        try_files $uri $uri/ =404;
+        autoindex on;
+    }
+
+    location = /dashboard {
+        gzip off;
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /usr/local/lib/dashboard-vm.sh;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
+    }
+}
+EOF
+
+cp /tmp/dashboard-common.sh /usr/local/lib/dashboard-common.sh
+cp /tmp/dashboard-vm.sh /usr/local/lib/dashboard-vm.sh
+chmod +x /usr/local/lib/dashboard-vm.sh
+
+mkdir -p /etc/systemd/system/fcgiwrap.service.d
+cat <<'EOF' > /etc/systemd/system/fcgiwrap.service.d/override.conf
+[Service]
+User=root
+Group=root
+EOF
+systemctl daemon-reload
+systemctl enable fcgiwrap
+systemctl restart fcgiwrap
+systemctl enable nginx
+systemctl restart nginx
+
 echo "Provisioning complete."
 echo "Java version: $(java -version 2>&1 | head -1)"
+echo "Dashboard: http://test-client/dashboard"
 echo "SSH in as vagrant and run: ./install-oracle.sh"
 echo "Then run: ./test_auth.sh or ./kinit-keytab.sh"

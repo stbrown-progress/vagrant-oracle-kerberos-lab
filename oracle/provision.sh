@@ -23,7 +23,7 @@ fetch_with_retry "http://$KDC_IP/artifacts/dnsupdater.keytab" /opt/artifacts/dns
 # Install Kerberos and DNS tooling for authenticated DNS updates.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y krb5-user samba-common-bin dnsutils chrony
+apt-get install -y krb5-user samba-common-bin dnsutils chrony nginx fcgiwrap
 
 # --- Configure NTP to sync with the KDC ---
 cat <<EOF > /etc/chrony/chrony.conf
@@ -210,5 +210,44 @@ fi
 
 # Create test users (idempotent — skips if they already exist)
 docker exec oracle sqlplus -s / as sysdba @/opt/scripts/create_users.sql
+
+# --- Deploy Status Dashboard ---
+cat <<'EOF' > /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    root /var/www/html;
+    index index.html;
+    server_name _;
+
+    location / {
+        try_files $uri $uri/ =404;
+        autoindex on;
+    }
+
+    location = /dashboard {
+        gzip off;
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /usr/local/lib/dashboard-vm.sh;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
+    }
+}
+EOF
+
+cp /tmp/dashboard-common.sh /usr/local/lib/dashboard-common.sh
+cp /tmp/dashboard-vm.sh /usr/local/lib/dashboard-vm.sh
+chmod +x /usr/local/lib/dashboard-vm.sh
+
+mkdir -p /etc/systemd/system/fcgiwrap.service.d
+cat <<'EOF' > /etc/systemd/system/fcgiwrap.service.d/override.conf
+[Service]
+User=root
+Group=root
+EOF
+systemctl daemon-reload
+systemctl enable fcgiwrap
+systemctl restart fcgiwrap
+systemctl enable nginx
+systemctl restart nginx
 
 echo "Oracle setup complete."

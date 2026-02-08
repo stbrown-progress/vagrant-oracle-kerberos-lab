@@ -12,7 +12,9 @@ Vagrant.configure("2") do |config|
     hv.enable_virtualization_extensions = true
   end
 
-  # The heavy lifting happens inside the VM
+  # Upload dashboard files, then run provisioning
+  config.vm.provision "file", source: "../lib/dashboard-common.sh", destination: "/tmp/dashboard-common.sh", run: "always"
+  config.vm.provision "file", source: "../lib/dashboard-kdc.sh", destination: "/tmp/dashboard-vm.sh", run: "always"
   config.vm.provision "shell", path: "provision.sh", run: "always"
 
   # --- VAGRANT NATIVE STATE PASSING ---

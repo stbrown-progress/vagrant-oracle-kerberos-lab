@@ -4,7 +4,7 @@ set -e
 # --- Install dependencies needed for Samba AD DC, Kerberos, and DNS ---
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y samba krb5-user winbind smbclient dnsutils iproute2 net-tools ldb-tools ldap-utils libsasl2-modules-gssapi-mit nginx chrony
+apt-get install -y samba krb5-user winbind smbclient dnsutils iproute2 net-tools ldb-tools ldap-utils libsasl2-modules-gssapi-mit nginx fcgiwrap chrony
 
 # --- Configure NTP so Kerberos clock-skew stays under 5 minutes ---
 cat <<EOF > /etc/chrony/chrony.conf
@@ -117,28 +117,47 @@ samba-tool domain exportkeytab --principal=oracleuser@CORP.INTERNAL /var/www/htm
 samba-tool domain exportkeytab --principal=dnsupdater@CORP.INTERNAL /var/www/html/artifacts/dnsupdater.keytab
 chmod 644 /var/www/html/artifacts/*
 
-# --- Configure Nginx to allow directory listing ---
-# We overwrite the default config to enable 'autoindex on'
-cat <<EOF > /etc/nginx/sites-available/default
+# --- Configure Nginx with directory listing and CGI dashboard ---
+cat <<'EOF' > /etc/nginx/sites-available/default
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
-    # The root directory where we put the artifacts
     root /var/www/html;
-    
     index index.html index.htm;
     server_name _;
 
     location / {
-        try_files \$uri \$uri/ =404;
-        # ENABLE DIRECTORY LISTING
+        try_files $uri $uri/ =404;
         autoindex on;
         autoindex_exact_size on;
         autoindex_localtime on;
     }
+
+    location = /dashboard {
+        gzip off;
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /usr/local/lib/dashboard-vm.sh;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
+    }
 }
 EOF
+
+# --- Deploy Status Dashboard ---
+cp /tmp/dashboard-common.sh /usr/local/lib/dashboard-common.sh
+cp /tmp/dashboard-vm.sh /usr/local/lib/dashboard-vm.sh
+chmod +x /usr/local/lib/dashboard-vm.sh
+
+# Run fcgiwrap as root so dashboard can access systemctl, samba-tool, etc.
+mkdir -p /etc/systemd/system/fcgiwrap.service.d
+cat <<'EOF' > /etc/systemd/system/fcgiwrap.service.d/override.conf
+[Service]
+User=root
+Group=root
+EOF
+systemctl daemon-reload
+systemctl enable fcgiwrap
+systemctl restart fcgiwrap
 
 systemctl restart nginx
 

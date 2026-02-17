@@ -3,9 +3,8 @@
 # This is the main provisioning script for the Windows 10 test client.
 # It handles basic network setup, then delegates to focused sub-scripts:
 #   1. setup-domain-join.ps1 - Join the CORP.INTERNAL AD domain
-#   2. setup-java.ps1        - Install Eclipse Temurin 21 LTS (JDK)
-#   3. setup-rdp.ps1         - Enable Remote Desktop + firewall rule
-#   4. setup-dashboard.ps1   - Install PowerShell dashboard as a service
+#   2. setup-rdp.ps1         - Enable Remote Desktop + firewall rule
+#   3. setup-dashboard.ps1   - Install PowerShell dashboard as a service
 #
 # Usage: provision.ps1 -KdcIp <ip-address>
 # Called by Vagrant with the KDC IP from ../.kdc_ip
@@ -107,13 +106,10 @@ catch {
 Write-Host "`n=== 4. Domain Join ==="
 & C:\tmp\setup-domain-join.ps1 -KdcIp $KdcIp
 
-Write-Host "`n=== 5. Java Installation ==="
-& C:\tmp\setup-java.ps1
-
-Write-Host "`n=== 6. Remote Desktop ==="
+Write-Host "`n=== 5. Remote Desktop ==="
 & C:\tmp\setup-rdp.ps1
 
-Write-Host "`n=== 7. Dashboard Service ==="
+Write-Host "`n=== 6. Dashboard Service ==="
 & C:\tmp\setup-dashboard.ps1 -KdcIp $KdcIp
 
 Write-Host "`n=============================================="

@@ -6,8 +6,8 @@
 #
 # Dashboard sections:
 #   - Domain Status        - DNS Resolution
-#   - Kerberos Tickets     - Java Version
-#   - Network Config       - RDP Status
+#   - Kerberos Tickets     - Network Config
+#   - RDP Status
 
 # ── HTML/CSS Template (matches lib/dashboard-common.sh) ──────────
 
@@ -102,9 +102,6 @@ function Get-DashboardHtml {
         }
     }
     $sections += Get-Section "DNS Resolution" "Resolve-DnsName *.corp.internal" ($dnsOutput -join "`n")
-
-    # Java Version
-    $sections += RunSection "Java Version" "java -version 2>&1"
 
     # Network Configuration
     $sections += RunSection "Network Adapters" "Get-NetIPAddress -AddressFamily IPv4 | Format-Table InterfaceAlias, IPAddress, PrefixLength -AutoSize | Out-String" ""

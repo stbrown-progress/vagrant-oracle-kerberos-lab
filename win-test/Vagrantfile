@@ -28,7 +28,6 @@ Vagrant.configure("2") do |config|
   # Upload sub-scripts to C:\tmp\ on the VM
   # Vagrant's file provisioner copies files from host to guest.
   config.vm.provision "file", source: "setup-domain-join.ps1", destination: "C:\\tmp\\setup-domain-join.ps1"
-  config.vm.provision "file", source: "setup-java.ps1",        destination: "C:\\tmp\\setup-java.ps1"
   config.vm.provision "file", source: "setup-rdp.ps1",         destination: "C:\\tmp\\setup-rdp.ps1"
   config.vm.provision "file", source: "setup-dashboard.ps1",   destination: "C:\\tmp\\setup-dashboard.ps1"
   config.vm.provision "file", source: "dashboard-win.ps1",     destination: "C:\\tmp\\dashboard-win.ps1"

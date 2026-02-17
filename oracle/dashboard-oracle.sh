@@ -8,11 +8,11 @@ dashboard_nav
 dashboard_run_section "Docker Container Status" \
     "docker ps -a --filter name=oracle --no-trunc --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'"
 
-# lsnrctl needs to run as the oracle user inside the container.
-# Use runuser instead of su — su prompts for a password in non-interactive shells.
-lsnr_output=$(docker exec oracle bash -c 'runuser -l oracle -c "lsnrctl status"' 2>&1) || true
+# lsnrctl needs the oracle user's environment (ORACLE_HOME, PATH, etc.).
+# Use "docker exec --user oracle" with a login shell to load the profile.
+lsnr_output=$(docker exec --user oracle oracle bash -lc "lsnrctl status" 2>&1) || true
 dashboard_section "Oracle Listener Status" \
-    "docker exec oracle runuser -l oracle -c \"lsnrctl status\"" \
+    "docker exec --user oracle oracle bash -lc \"lsnrctl status\"" \
     "$lsnr_output"
 
 dashboard_run_section "PDB Status" \

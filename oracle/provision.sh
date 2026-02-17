@@ -21,6 +21,10 @@ set -e
 KDC_IP=$1
 ORACLE_IP=$(hostname -I | awk '{print $1}')
 
+# Strip Windows carriage returns from uploaded scripts (developed on Windows)
+sed -i 's/\r$//' /tmp/setup-dns-registration.sh /tmp/setup-docker.sh \
+    /tmp/setup-oracle-db.sh /tmp/setup-dashboard.sh /tmp/fetch_with_retry.sh
+
 echo "==> Configuring Oracle VM (KDC: $KDC_IP, Oracle: $ORACLE_IP)"
 
 # =====================================================================

@@ -13,6 +13,10 @@
 set -e
 KDC_IP=$1
 
+# Strip Windows carriage returns from uploaded scripts (developed on Windows)
+sed -i 's/\r$//' /tmp/setup-dashboard.sh /tmp/fetch_with_retry.sh \
+    /tmp/lib/install-oracle.sh /tmp/lib/test_auth.sh /tmp/lib/kinit-keytab.sh
+
 echo "==> Configuring Test Client (KDC: $KDC_IP)"
 
 # =====================================================================

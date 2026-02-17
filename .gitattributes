@@ -1,2 +1,5 @@
-# Force Unix line endings for shell scripts (they run inside Linux VMs)
+# Force Unix line endings for files that run inside Linux VMs
 *.sh text eol=lf
+*.sql text eol=lf
+*.ora text eol=lf
+*.isql text eol=lf

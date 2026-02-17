@@ -12,6 +12,9 @@
 #
 set -e
 
+# Strip Windows carriage returns from uploaded scripts (developed on Windows)
+sed -i 's/\r$//' /tmp/setup-samba.sh /tmp/setup-users.sh /tmp/setup-dashboard.sh
+
 # =====================================================================
 # 1. Install packages
 # =====================================================================

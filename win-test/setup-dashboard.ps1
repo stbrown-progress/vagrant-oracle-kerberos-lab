@@ -68,4 +68,4 @@ if (-not $rule) {
 # -- Verify -----------------------------------------------------------
 $task = Get-ScheduledTask -TaskName $taskName
 Write-Host "Dashboard task state: $($task.State)"
-Write-Host "Dashboard URL: http://localhost/dashboard"
+Write-Host "Dashboard URL: http://win-client/dashboard"

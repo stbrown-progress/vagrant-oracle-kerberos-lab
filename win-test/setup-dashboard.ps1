@@ -1,7 +1,7 @@
-# win-test/setup-dashboard.ps1 - Install PowerShell dashboard as a Windows service
+# win-test/setup-dashboard.ps1 - Install PowerShell dashboard as a scheduled task
 #
-# Uses NSSM (Non-Sucking Service Manager) to run dashboard-win.ps1 as a service.
-# Downloads NSSM if not present, installs the service, opens firewall port 80.
+# Registers dashboard-win.ps1 as a scheduled task that runs at startup under SYSTEM.
+# Opens firewall port 80 for HTTP access.
 # Idempotent: safe to run multiple times.
 
 param(
@@ -11,69 +11,51 @@ param(
 $ErrorActionPreference = "Stop"
 
 $dashboardDir = "C:\vagrant-dashboard"
-$nssmDir = "C:\nssm"
-$nssmExe = "$nssmDir\nssm.exe"
-$serviceName = "VagrantDashboard"
+$scriptPath = "$dashboardDir\dashboard-win.ps1"
+$taskName = "VagrantDashboard"
 
-# ── Create dashboard directory and copy script ────────────────────
+# -- Create dashboard directory and copy script ----------------------
 Write-Host "Setting up dashboard directory..."
 New-Item -ItemType Directory -Force -Path $dashboardDir | Out-Null
-Copy-Item -Path "C:\tmp\dashboard-win.ps1" -Destination "$dashboardDir\dashboard-win.ps1" -Force
+Copy-Item -Path "C:\tmp\dashboard-win.ps1" -Destination $scriptPath -Force
 
-# ── Download NSSM if not present ─────────────────────────────────
-if (-not (Test-Path $nssmExe)) {
-    Write-Host "Downloading NSSM..."
-    New-Item -ItemType Directory -Force -Path $nssmDir | Out-Null
-
-    $nssmUrl = "https://nssm.cc/release/nssm-2.24.zip"
-    $nssmZip = "$env:TEMP\nssm.zip"
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
-
-    # Extract just the 64-bit exe
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($nssmZip)
-    try {
-        $entry = $zip.Entries | Where-Object { $_.FullName -like "*/win64/nssm.exe" } | Select-Object -First 1
-        if ($entry) {
-            $stream = $entry.Open()
-            $fileStream = [System.IO.File]::Create($nssmExe)
-            try {
-                $stream.CopyTo($fileStream)
-            } finally {
-                $fileStream.Close()
-                $stream.Close()
-            }
-            Write-Host "Extracted NSSM to $nssmExe"
-        } else {
-            Write-Error "Could not find win64/nssm.exe in downloaded archive."
-        }
-    } finally {
-        $zip.Dispose()
-    }
-    Remove-Item $nssmZip -Force -ErrorAction SilentlyContinue
+# -- Register scheduled task -----------------------------------------
+$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if ($existingTask) {
+    Write-Host "Task '$taskName' already exists. Stopping and re-registering..."
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 
-# ── Install/update the Windows service ───────────────────────────
-$existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-if ($existingService) {
-    Write-Host "Service '$serviceName' already exists. Restarting..."
-    & $nssmExe restart $serviceName 2>&1 | Out-Null
-} else {
-    Write-Host "Installing '$serviceName' service..."
-    & $nssmExe install $serviceName powershell.exe "-ExecutionPolicy Bypass -File $dashboardDir\dashboard-win.ps1"
-    & $nssmExe set $serviceName AppDirectory $dashboardDir
-    & $nssmExe set $serviceName DisplayName "Vagrant Lab Dashboard"
-    & $nssmExe set $serviceName Description "PowerShell HTTP dashboard for Vagrant lab status"
-    & $nssmExe set $serviceName Start SERVICE_AUTO_START
-    # Redirect stdout/stderr to log files for debugging
-    & $nssmExe set $serviceName AppStdout "$dashboardDir\dashboard-stdout.log"
-    & $nssmExe set $serviceName AppStderr "$dashboardDir\dashboard-stderr.log"
-    & $nssmExe start $serviceName
-    Write-Host "Service '$serviceName' installed and started."
-}
+Write-Host "Registering '$taskName' scheduled task..."
+$action = New-ScheduledTaskAction `
+    -Execute "powershell.exe" `
+    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"" `
+    -WorkingDirectory $dashboardDir
 
-# ── Open firewall port 80 ────────────────────────────────────────
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -RestartCount 3 `
+    -RestartInterval (New-TimeSpan -Minutes 1) `
+    -ExecutionTimeLimit (New-TimeSpan -Days 365)
+
+Register-ScheduledTask `
+    -TaskName $taskName `
+    -Action $action `
+    -Trigger $trigger `
+    -Principal $principal `
+    -Settings $settings `
+    -Description "PowerShell HTTP dashboard for Vagrant lab status" | Out-Null
+
+# Start it now
+Start-ScheduledTask -TaskName $taskName
+Start-Sleep -Seconds 2
+Write-Host "Task '$taskName' registered and started."
+
+# -- Open firewall port 80 -------------------------------------------
 $rule = Get-NetFirewallRule -DisplayName "Vagrant Dashboard HTTP" -ErrorAction SilentlyContinue
 if (-not $rule) {
     Write-Host "Opening firewall port 80 for dashboard..."
@@ -83,7 +65,7 @@ if (-not $rule) {
     Write-Host "Firewall rule for port 80 already exists."
 }
 
-# Verify
-$svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-Write-Host "Dashboard service status: $($svc.Status)"
+# -- Verify -----------------------------------------------------------
+$task = Get-ScheduledTask -TaskName $taskName
+Write-Host "Dashboard task state: $($task.State)"
 Write-Host "Dashboard URL: http://localhost/dashboard"

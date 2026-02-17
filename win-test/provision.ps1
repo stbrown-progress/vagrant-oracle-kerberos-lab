@@ -47,8 +47,9 @@ Get-NetAdapter | ForEach-Object {
     Set-DnsClient -InterfaceIndex $_.InterfaceIndex -ConnectionSpecificSuffix "corp.internal" -ErrorAction SilentlyContinue
 }
 
-# Prevent Windows from marking the network as "Public" and blocking WinRM
-Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+# Prevent Windows from marking the network as "Public" and blocking WinRM.
+# After domain join the profile becomes "DomainAuthenticated" and can't be changed -- that's fine.
+Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private -ErrorAction SilentlyContinue
 
 # Flush and restart DNS client to force it to use the new settings
 ipconfig /flushdns | Out-Null

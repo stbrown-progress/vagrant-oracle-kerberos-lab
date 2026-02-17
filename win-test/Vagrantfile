@@ -9,6 +9,9 @@ Vagrant.configure("2") do |config|
   # Windows requires WinRM for communication (Default for this box)
   config.vm.communicator = "winrm"
 
+  # Disable default synced folder (SMB prompts for local credentials on Hyper-V)
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
   config.vm.provider "hyperv" do |hv|
     hv.vmname = "win-client"
     hv.memory = 4096

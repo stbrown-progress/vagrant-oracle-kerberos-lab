@@ -66,8 +66,35 @@ if [ ! -f /etc/samba/smb.conf.bak ]; then
         --adminpass='Str0ngPassw0rd!' \
         --option="dns forwarder=8.8.8.8"
         
-    cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
 fi
+
+# Generate a proper krb5.conf with settings needed by Java/JDBC Kerberos clients.
+# Samba's auto-generated krb5.conf is too minimal (e.g. uses dns_lookup_kdc=true,
+# lacks forwardable/proxiable) which causes "Empty nameStrings" errors in some
+# JDBC drivers.
+cat <<EOF > /etc/krb5.conf
+[libdefaults]
+    default_realm = CORP.INTERNAL
+    dns_lookup_realm = false
+    dns_lookup_kdc = false
+    ticket_lifetime = 24h
+    forwardable = true
+    proxiable = true
+    allow_weak_crypto = true
+
+[realms]
+    CORP.INTERNAL = {
+        kdc = $KDC_IP
+        admin_server = $KDC_IP
+        default_domain = corp.internal
+    }
+
+[domain_realm]
+    .corp.internal = CORP.INTERNAL
+    corp.internal = CORP.INTERNAL
+    .CORP.INTERNAL = CORP.INTERNAL
+    CORP.INTERNAL = CORP.INTERNAL
+EOF
 
 # Ensure Samba is running
 systemctl enable samba-ad-dc

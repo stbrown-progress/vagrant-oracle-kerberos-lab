@@ -1,8 +1,9 @@
 -- create_users.sql - Idempotent creation of test database users in FREEPDB1
 --
--- Creates two users:
+-- Creates three users:
 --   TESTUSER                  - password-authenticated test account
 --   oracleuser@CORP.INTERNAL  - Kerberos-authenticated (IDENTIFIED EXTERNALLY)
+--   winuser@CORP.INTERNAL     - Kerberos-authenticated (Windows SSO via SSPI)
 
 ALTER SESSION SET CONTAINER = FREEPDB1;
 
@@ -32,5 +33,18 @@ BEGIN
 END;
 /
 
-SELECT username FROM all_users WHERE username IN ('TESTUSER', 'ORACLEUSER@CORP.INTERNAL');
+-- Kerberos-authenticated user for Windows SSO (maps to AD principal winuser@CORP.INTERNAL)
+DECLARE
+  v_count NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_count FROM all_users WHERE username = 'winuser@CORP.INTERNAL';
+  IF v_count = 0 THEN
+    EXECUTE IMMEDIATE 'CREATE USER "winuser@CORP.INTERNAL" IDENTIFIED EXTERNALLY AS ''winuser@CORP.INTERNAL''';
+    EXECUTE IMMEDIATE 'GRANT CONNECT, RESOURCE TO "winuser@CORP.INTERNAL"';
+    DBMS_OUTPUT.PUT_LINE('Created winuser@CORP.INTERNAL');
+  END IF;
+END;
+/
+
+SELECT username FROM all_users WHERE username IN ('TESTUSER', 'ORACLEUSER@CORP.INTERNAL', 'winuser@CORP.INTERNAL');
 EXIT;

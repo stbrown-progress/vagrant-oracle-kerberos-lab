@@ -54,26 +54,30 @@ if ($sysInfo.PartOfDomain) {
     }
 }
 
-# -- Wait for DNS resolution via the new KDC ----------------------
+# -- Wait for DC discovery via DNS ---------------------------------
+# The Windows DNS client must be able to find the DC via SRV records
+# (_ldap._tcp.dc._msdcs.corp.internal) for domain join to work.
+# provision.ps1 already configured DNS and verified it with nslookup,
+# but we double-check here with the actual SRV record lookup.
 Write-Host "Joining domain $domainName..."
+Write-Host "Verifying DC discovery via SRV records..."
 
-$maxRetries = 30
+$maxRetries = 20
 $resolved = $false
 for ($i = 1; $i -le $maxRetries; $i++) {
-    try {
-        $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
-        Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
+    $nlResult = nltest /dsgetdc:CORP.INTERNAL 2>&1 | Out-String
+    if ($nlResult -match "DC: ") {
+        Write-Host "DC discovery OK:"
+        Write-Host $nlResult
         $resolved = $true
         break
     }
-    catch {
-        Write-Host "DNS not ready yet ($i/$maxRetries), retrying in 3s..."
-        Start-Sleep -Seconds 3
-    }
+    Write-Host "DC not found yet ($i/$maxRetries), retrying in 3s..."
+    Start-Sleep -Seconds 3
 }
 
 if (-not $resolved) {
-    Write-Error "Cannot resolve samba-ad-dc.corp.internal after $maxRetries attempts (90s). Domain join will fail."
+    Write-Warning "DC discovery failed via SRV records. Attempting join anyway..."
 }
 
 # -- Join the domain ----------------------------------------------

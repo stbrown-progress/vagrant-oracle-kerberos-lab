@@ -12,7 +12,10 @@ Vagrant.configure("2") do |config|
     hv.enable_virtualization_extensions = true
   end
 
-  # Upload dashboard files, then run provisioning
+  # Upload sub-scripts and dashboard files, then run provisioning
+  config.vm.provision "file", source: "setup-samba.sh", destination: "/tmp/setup-samba.sh", run: "always"
+  config.vm.provision "file", source: "setup-users.sh", destination: "/tmp/setup-users.sh", run: "always"
+  config.vm.provision "file", source: "../lib/setup-dashboard.sh", destination: "/tmp/setup-dashboard.sh", run: "always"
   config.vm.provision "file", source: "../lib/dashboard-common.sh", destination: "/tmp/dashboard-common.sh", run: "always"
   config.vm.provision "file", source: "dashboard-kdc.sh", destination: "/tmp/dashboard-vm.sh", run: "always"
   config.vm.provision "shell", path: "provision.sh", run: "always"

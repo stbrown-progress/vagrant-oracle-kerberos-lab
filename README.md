@@ -144,26 +144,36 @@ vagrant-lab/
 ├── .gitignore
 ├── .kdc_ip                      # Auto-generated KDC IP (gitignored)
 ├── lib/
-│   ├── hosts_trigger.rb         # Shared Vagrant trigger for hosts file mgmt
+│   ├── hosts_trigger.rb         # Shared Vagrant trigger for Windows hosts file
 │   ├── fetch_with_retry.sh      # Shared download-with-retry helper
-│   └── dashboard-common.sh      # Shared dashboard HTML/CSS helpers
+│   ├── dashboard-common.sh      # Shared dashboard HTML/CSS helpers
+│   └── setup-dashboard.sh       # Shared Nginx + CGI dashboard deployment
 ├── kdc/
 │   ├── Vagrantfile
-│   ├── provision.sh
+│   ├── provision.sh             # Orchestrator: packages, NTP, DNS, delegates
+│   ├── setup-samba.sh           # Samba AD domain provisioning + krb5.conf
+│   ├── setup-users.sh           # AD users, SPNs, encryption, keytab export
 │   ├── dashboard-kdc.sh         # KDC status dashboard CGI script
 │   └── README.md
 ├── oracle/
 │   ├── Vagrantfile
-│   ├── provision.sh
+│   ├── provision.sh             # Orchestrator: packages, NTP, DNS, delegates
+│   ├── setup-dns-registration.sh # Register VM IP in Samba DNS via keytab
+│   ├── setup-docker.sh          # Install Docker, run Oracle Free container
+│   ├── setup-oracle-db.sh       # Wait for DB, deploy sqlnet.ora, create users
+│   ├── sqlnet.ora               # Oracle server-side Kerberos network config
+│   ├── create_users.sql         # Idempotent DB user creation (FREEPDB1)
+│   ├── check_cdb.sql            # CDB readiness check query
+│   ├── check_pdb.sql            # PDB readiness check query
 │   ├── dashboard-oracle.sh      # Oracle status dashboard CGI script
 │   └── README.md
 ├── test/
 │   ├── Vagrantfile
-│   ├── provision.sh
+│   ├── provision.sh             # Orchestrator: packages, NTP, DNS, helpers
 │   ├── dashboard-test.sh        # Test client status dashboard CGI script
 │   ├── install-oracle.sh        # Oracle Instant Client installer
-│   ├── kinit-keytab.sh          # Kerberos TGT helper
-│   ├── test_auth.sh             # End-to-end Kerberos+Oracle auth test
+│   ├── kinit-keytab.sh          # Kerberos TGT helper (keytab-based)
+│   ├── test_auth.sh             # End-to-end Kerberos + Oracle auth test
 │   ├── connect.isql             # Password-based Oracle connection script
 │   ├── connect-kerb.isql        # Kerberos-based Oracle connection script
 │   ├── sqlnet-client.ora        # SQL*Net client Kerberos config

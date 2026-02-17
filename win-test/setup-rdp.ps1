@@ -1,7 +1,7 @@
 # win-test/setup-rdp.ps1 - Enable Remote Desktop access
 #
 # Enables RDP, opens the firewall, and grants the domain user 'winuser'
-# access to log in via Remote Desktop.
+# local admin + Remote Desktop access.
 # Idempotent: safe to run multiple times.
 
 $ErrorActionPreference = "Stop"
@@ -19,24 +19,24 @@ Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\W
 Write-Host "Configuring firewall for RDP..."
 Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
 
-# Ensure the Remote Desktop Users group exists and add winuser
-# This only works after domain join + reboot, so we try gracefully.
+# Add winuser to local groups (requires domain join + reboot to resolve the account)
 $sysInfo = Get-CimInstance Win32_ComputerSystem
 if ($sysInfo.PartOfDomain) {
-    try {
-        Add-LocalGroupMember -Group "Remote Desktop Users" -Member "CORP\winuser" -ErrorAction Stop
-        Write-Host "Added CORP\winuser to Remote Desktop Users group."
-    }
-    catch {
-        if ($_.Exception.Message -match "already a member") {
-            Write-Host "CORP\winuser is already in Remote Desktop Users."
-        } else {
-            Write-Warning "Could not add CORP\winuser to RDP group: $_"
-            Write-Warning "This is expected before domain join reboot. Re-run provisioning after 'vagrant reload'."
+    foreach ($group in @("Remote Desktop Users", "Administrators")) {
+        try {
+            Add-LocalGroupMember -Group $group -Member "CORP\winuser" -ErrorAction Stop
+            Write-Host "Added CORP\winuser to $group."
+        }
+        catch {
+            if ($_.Exception.Message -match "already a member") {
+                Write-Host "CORP\winuser is already in $group."
+            } else {
+                Write-Warning "Could not add CORP\winuser to ${group}: $_"
+            }
         }
     }
 } else {
-    Write-Host "Not yet domain-joined -- skipping winuser RDP group membership (will be set after reload)."
+    Write-Host "Not yet domain-joined -- skipping winuser group membership (will be set after reload)."
 }
 
 # Verify RDP service is running

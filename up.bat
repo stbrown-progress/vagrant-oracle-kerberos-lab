@@ -1,1 +1,1 @@
-powershell -ExecutionPolicy Bypass -File up.ps1
+powershell -ExecutionPolicy Bypass -File up.ps1 %*

@@ -54,6 +54,16 @@ vagrant destroy -f  # tear down
 
 **Note:** After the Windows client's first boot, run `vagrant reload` from `win-test/` to complete the domain join reboot.
 
+### Rebuilding the KDC
+
+If you need to destroy and recreate the KDC without losing your other VMs:
+
+```powershell
+.\rebuild-kdc.ps1
+```
+
+This destroys the KDC, rebuilds it from scratch, and re-provisions all running VMs with the new KDC IP and fresh keytabs. Linux VMs recover automatically. The Windows client requires extra steps after the script (domain re-join + reboots) — the script prints instructions.
+
 ## VMs
 
 | VM | Directory | Box | RAM | Purpose |
@@ -161,6 +171,7 @@ vagrant-lab/
 ├── README.md                    # This file
 ├── up.ps1                       # Orchestrator: bring up VMs in order
 ├── down.ps1                     # Orchestrator: tear down VMs
+├── rebuild-kdc.ps1              # Destroy + rebuild KDC, re-provision dependents
 ├── .gitignore
 ├── .kdc_ip                      # Auto-generated KDC IP (gitignored)
 ├── lib/

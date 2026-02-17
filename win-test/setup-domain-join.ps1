@@ -2,9 +2,9 @@
 #
 # Waits for DNS resolution via the Samba AD DC, then joins the domain.
 # Handles three scenarios:
-#   1. Not domain-joined → join the domain
-#   2. Domain-joined and DC is reachable → skip (already good)
-#   3. Domain-joined but DC was rebuilt → remove from old domain, re-join
+#   1. Not domain-joined -> join the domain
+#   2. Domain-joined and DC is reachable -> skip (already good)
+#   3. Domain-joined but DC was rebuilt -> remove from old domain, re-join
 #
 # After a successful join, a reboot is required (vagrant reload).
 
@@ -18,7 +18,7 @@ $domainName = "CORP.INTERNAL"
 $adminUser = "Administrator"
 $adminPass = "Str0ngPassw0rd!"
 
-# ── Check current domain status ──────────────────────────────────
+# -- Check current domain status ----------------------------------
 $sysInfo = Get-CimInstance Win32_ComputerSystem
 if ($sysInfo.PartOfDomain) {
     Write-Host "Machine reports domain membership: $($sysInfo.Domain)"
@@ -30,9 +30,9 @@ if ($sysInfo.PartOfDomain) {
         return
     }
 
-    # DC was rebuilt — the old trust relationship is broken.
+    # DC was rebuilt -- the old trust relationship is broken.
     # Remove from the (dead) domain so we can re-join the new one.
-    Write-Warning "Secure channel verification failed — DC was likely rebuilt."
+    Write-Warning "Secure channel verification failed -- DC was likely rebuilt."
     Write-Warning "Removing from stale domain..."
     try {
         # Use local admin creds to leave since domain creds won't work
@@ -54,7 +54,7 @@ if ($sysInfo.PartOfDomain) {
     }
 }
 
-# ── Wait for DNS resolution via the new KDC ──────────────────────
+# -- Wait for DNS resolution via the new KDC ----------------------
 Write-Host "Joining domain $domainName..."
 
 $resolved = $false
@@ -75,7 +75,7 @@ if (-not $resolved) {
     Write-Error "Cannot resolve samba-ad-dc.corp.internal after 10 attempts. Domain join will fail."
 }
 
-# ── Join the domain ──────────────────────────────────────────────
+# -- Join the domain ----------------------------------------------
 $secPass = ConvertTo-SecureString $adminPass -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential("$domainName\$adminUser", $secPass)
 

@@ -15,9 +15,9 @@
     For the Windows client, the domain trust will be broken by the KDC rebuild.
     This script re-provisions it to detect and remove the stale domain join.
     After the script completes, you'll need to:
-      1. vagrant reload  (from win-test/)  — reboot after domain removal
-      2. vagrant provision (from win-test/) — re-join the new domain
-      3. vagrant reload  (from win-test/)  — reboot after re-join
+      1. vagrant reload  (from win-test/)  - reboot after domain removal
+      2. vagrant provision (from win-test/) - re-join the new domain
+      3. vagrant reload  (from win-test/)  - reboot after re-join
 #>
 
 $ErrorActionPreference = "Stop"
@@ -37,17 +37,17 @@ function Invoke-InDir {
     }
 }
 
-# ── Step 1: Destroy the KDC ──────────────────────────────────────
+# -- Step 1: Destroy the KDC --------------------------------------
 Write-Host "`n=== Step 1: Destroying KDC ===" -ForegroundColor Yellow
 Invoke-InDir "kdc" "vagrant destroy -f"
 
-# ── Step 2: Rebuild the KDC ──────────────────────────────────────
+# -- Step 2: Rebuild the KDC --------------------------------------
 Write-Host "`n=== Step 2: Rebuilding KDC ===" -ForegroundColor Cyan
 Invoke-InDir "kdc" "vagrant up --provider=hyperv"
 
 Write-Host "`nNew KDC IP: $(Get-Content (Join-Path $Root '.kdc_ip'))" -ForegroundColor Green
 
-# ── Step 3: Re-provision running VMs ─────────────────────────────
+# -- Step 3: Re-provision running VMs ----------------------------─
 # vagrant provision only works on running VMs; halted ones are skipped.
 $dependentVMs = @("oracle", "test", "win-test")
 
@@ -68,7 +68,7 @@ foreach ($vm in $dependentVMs) {
     }
 }
 
-# ── Summary ──────────────────────────────────────────────────────
+# -- Summary ------------------------------------------------------
 Write-Host "`n=============================================="  -ForegroundColor Green
 Write-Host "  KDC Rebuild Complete"                            -ForegroundColor Green
 Write-Host "=============================================="  -ForegroundColor Green

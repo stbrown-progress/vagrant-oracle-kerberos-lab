@@ -36,7 +36,7 @@ if ($sysInfo.PartOfDomain) {
         }
     }
 } else {
-    Write-Host "Not yet domain-joined — skipping winuser RDP group membership (will be set after reload)."
+    Write-Host "Not yet domain-joined -- skipping winuser RDP group membership (will be set after reload)."
 }
 
 # Verify RDP service is running

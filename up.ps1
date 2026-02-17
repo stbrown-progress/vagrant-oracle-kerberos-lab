@@ -40,7 +40,7 @@ Start-VM "kdc"
 # 2. Oracle depends on KDC for DNS registration and keytabs
 Start-VM "oracle"
 
-# 3. Test clients (sequential — Hyper-V switch prompt requires interactive input)
+# 3. Test clients (sequential - Hyper-V switch prompt requires interactive input)
 Start-VM "test"
 Start-VM "win-test"
 

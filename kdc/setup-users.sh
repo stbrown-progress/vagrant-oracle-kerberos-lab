@@ -4,8 +4,9 @@
 # This script handles:
 #   1. Creating the 'oracleuser' account (Oracle DB Kerberos principal)
 #   2. Creating the 'dnsupdater' account (dynamic DNS registration)
-#   3. Setting SPNs and encryption types for Kerberos auth
-#   4. Exporting keytabs for other VMs to download via Nginx
+#   3. Creating the 'winuser' account (Windows Kerberos SSO testing)
+#   4. Setting SPNs and encryption types for Kerberos auth
+#   5. Exporting keytabs for other VMs to download via Nginx
 #
 # Expects: Samba AD DC is running and $KDC_IP is set
 
@@ -25,6 +26,14 @@ if ! samba-tool user list | grep -q "dnsupdater"; then
     samba-tool user create dnsupdater StrongPassword123!
 fi
 
+# winuser — Windows domain user for Kerberos SSO testing.
+# Used to log into the Windows client and authenticate to Oracle DB
+# as the logged-in domain user (Integrated Windows Authentication).
+if ! samba-tool user list | grep -q "winuser"; then
+    echo "==> Creating AD user: winuser"
+    samba-tool user create winuser StrongPassword123!
+fi
+
 # dnsupdater needs DnsAdmins membership to modify DNS records
 samba-tool group addmembers "DnsAdmins" dnsupdater || true
 
@@ -32,6 +41,7 @@ samba-tool group addmembers "DnsAdmins" dnsupdater || true
 samba-tool user setexpiry Administrator --noexpiry || true
 samba-tool user setexpiry oracleuser   --noexpiry || true
 samba-tool user setexpiry dnsupdater   --noexpiry || true
+samba-tool user setexpiry winuser      --noexpiry || true
 
 # ── Register SPN for Oracle Kerberos authentication ──────────────
 # The SPN "oracle/oracle.corp.internal" is what Oracle clients use
@@ -46,6 +56,11 @@ samba-tool spn add oracle/oracle.corp.internal oracleuser || true
 # for Oracle's Kerberos implementation.
 cat <<EOF | ldapmodify -Y GSSAPI -H ldap://localhost
 dn: CN=oracleuser,CN=Users,DC=corp,DC=internal
+changetype: modify
+replace: msDS-SupportedEncryptionTypes
+msDS-SupportedEncryptionTypes: 31
+
+dn: CN=winuser,CN=Users,DC=corp,DC=internal
 changetype: modify
 replace: msDS-SupportedEncryptionTypes
 msDS-SupportedEncryptionTypes: 31
@@ -77,6 +92,11 @@ samba-tool domain exportkeytab \
     --principal=dnsupdater@CORP.INTERNAL \
     /var/www/html/artifacts/dnsupdater.keytab
 
+# winuser.keytab — Windows domain user for SSO testing
+samba-tool domain exportkeytab \
+    --principal=winuser@CORP.INTERNAL \
+    /var/www/html/artifacts/winuser.keytab
+
 chmod 644 /var/www/html/artifacts/*
 
 # ── Verification output ─────────────────────────────────────────
@@ -85,7 +105,7 @@ echo "==> SPNs for oracleuser:"
 samba-tool spn list oracleuser || true
 echo ""
 echo "==> Keytab principals:"
-for kt in oracle.keytab oracleuser.keytab dnsupdater.keytab; do
+for kt in oracle.keytab oracleuser.keytab dnsupdater.keytab winuser.keytab; do
     echo "--- $kt ---"
     klist -k /var/www/html/artifacts/$kt || true
 done

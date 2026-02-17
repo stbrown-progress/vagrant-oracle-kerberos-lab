@@ -1,77 +1,72 @@
-# PowerShell Provisioning Script
+# win-test/provision.ps1 - Windows Client Orchestrator
+#
+# This is the main provisioning script for the Windows 10 test client.
+# It handles basic network setup, then delegates to focused sub-scripts:
+#   1. setup-domain-join.ps1 — Join the CORP.INTERNAL AD domain
+#   2. setup-java.ps1        — Install Eclipse Temurin 21 LTS (JDK)
+#   3. setup-rdp.ps1         — Enable Remote Desktop + firewall rule
+#   4. setup-dashboard.ps1   — Install PowerShell dashboard as a service
+#
+# Usage: provision.ps1 -KdcIp <ip-address>
+# Called by Vagrant with the KDC IP from ../.kdc_ip
+
 param(
     [string]$KdcIp
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "--- Configuring Windows Client ---"
+Write-Host "=============================================="
+Write-Host "  Windows Client Provisioning"
+Write-Host "=============================================="
 Write-Host "Target KDC IP: $KdcIp"
 
-# Point DNS to the Samba AD DC so we can resolve oracle.corp.internal
-Write-Host "Setting DNS to $KdcIp..."
+# ── 1. Network Configuration ─────────────────────────────────────
+# Point DNS to the Samba AD DC so we can resolve *.corp.internal
+Write-Host "`n=== 1. Configuring DNS ==="
 Get-NetAdapter | Set-DnsClientServerAddress -ServerAddresses $KdcIp
 
 # Prevent Windows from marking the network as "Public" and blocking WinRM
 Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
 
-# Clear DNS cache to ensure we don't hold onto old records
+# Clear DNS cache to pick up fresh records from the AD DC
 Clear-DnsClientCache
 
-# Connectivity Check
-Write-Host "Testing connectivity to KDC..."
+# ── 2. Connectivity Check ────────────────────────────────────────
+Write-Host "`n=== 2. Testing KDC Connectivity ==="
 if (-not (Test-Connection -ComputerName $KdcIp -Count 1 -Quiet)) {
     Write-Error "Cannot ping KDC at $KdcIp. Check Hyper-V switches."
 }
+Write-Host "KDC is reachable at $KdcIp"
 
-# Kerberos configuration
+# ── 3. Download krb5.ini ─────────────────────────────────────────
+# Windows Kerberos reads C:\krb5.ini for realm/KDC configuration
+Write-Host "`n=== 3. Downloading Kerberos Configuration ==="
 $krbUrl = "http://$KdcIp/artifacts/krb5.conf"
 $destPath = "$env:SystemDrive\krb5.ini"
-
 try {
     Invoke-WebRequest -Uri $krbUrl -OutFile $destPath -UseBasicParsing
-    Write-Host "Downloaded krb5.ini successfully."
+    Write-Host "Downloaded krb5.ini to $destPath"
 }
 catch {
-    Write-Warning "Failed to download krb5.conf. Ensure KDC is up."
+    Write-Warning "Failed to download krb5.conf from $krbUrl. Ensure KDC is up."
 }
 
-# --- Domain Join ---
-$domainName = "CORP.INTERNAL"
-$adminUser = "Administrator"
-$adminPass = "Str0ngPassw0rd!"
+# ── 4. Delegate to Sub-Scripts ───────────────────────────────────
+# Sub-scripts are uploaded by Vagrant's file provisioner to C:\tmp\
 
-$sysInfo = Get-CimInstance Win32_ComputerSystem
-if ($sysInfo.PartOfDomain) {
-    Write-Host "Machine is already joined to domain: $($sysInfo.Domain)"
-}
-else {
-    Write-Host "Joining domain $domainName..."
+Write-Host "`n=== 4. Domain Join ==="
+& C:\tmp\setup-domain-join.ps1 -KdcIp $KdcIp
 
-    # Wait for DNS to start resolving via the KDC (adapter change can take a moment)
-    $resolved = $false
-    for ($i = 1; $i -le 10; $i++) {
-        try {
-            $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
-            Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
-            $resolved = $true
-            break
-        }
-        catch {
-            Write-Host "DNS not ready yet ($i/10), retrying in 3s..."
-            Start-Sleep -Seconds 3
-        }
-    }
+Write-Host "`n=== 5. Java Installation ==="
+& C:\tmp\setup-java.ps1
 
-    if (-not $resolved) {
-        Write-Error "Cannot resolve samba-ad-dc.corp.internal after 10 attempts. Domain Join will fail."
-    }
+Write-Host "`n=== 6. Remote Desktop ==="
+& C:\tmp\setup-rdp.ps1
 
-    $secPass = ConvertTo-SecureString $adminPass -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential("$domainName\$adminUser", $secPass)
+Write-Host "`n=== 7. Dashboard Service ==="
+& C:\tmp\setup-dashboard.ps1 -KdcIp $KdcIp
 
-    Add-Computer -DomainName $domainName -Credential $cred -Force
-
-    Write-Warning "!!! DOMAIN JOIN SUCCESSFUL !!!"
-    Write-Warning "You must run 'vagrant reload' to reboot and apply changes."
-}
+Write-Host "`n=============================================="
+Write-Host "  Provisioning Complete"
+Write-Host "=============================================="

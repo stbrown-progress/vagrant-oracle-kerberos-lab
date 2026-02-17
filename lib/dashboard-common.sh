@@ -83,6 +83,7 @@ dashboard_nav() {
 <a href="http://samba-ad-dc/dashboard">KDC Dashboard</a>
 <a href="http://oracle/dashboard">Oracle Dashboard</a>
 <a href="http://test-client/dashboard">Test Client Dashboard</a>
+<a href="http://win-client/dashboard">Win Client Dashboard</a>
 </div>
 HTMLNAV
 }

@@ -61,7 +61,7 @@ vagrant destroy -f  # tear down
 | samba-ad-dc | `kdc/` | generic/ubuntu2204 | 1 GB | Samba AD DC, Kerberos KDC, DNS |
 | oracle-db | `oracle/` | generic/ubuntu2204 | 4 GB | Oracle 23c Free in Docker |
 | test-client | `test/` | generic/ubuntu2204 | 1 GB | Linux client with Oracle Instant Client |
-| win-client | `win-test/` | gusztavvargadr/windows-10 | 4 GB | Domain-joined Windows 10 |
+| win-client | `win-test/` | gusztavvargadr/windows-10 | 4 GB | Domain-joined Windows 10 (RDP, Java, Dashboard) |
 
 ## Domain Details
 
@@ -73,6 +73,7 @@ vagrant destroy -f  # tear down
 | Oracle service account | `oracleuser` / `StrongPassword123!` |
 | DNS updater account | `dnsupdater` / `StrongPassword123!` |
 | Oracle SYS password | `Str0ngPassw0rd!` |
+| Windows test user | `winuser` / `StrongPassword123!` |
 | Oracle test user | `testuser` / `testpassword` |
 
 ## Testing Kerberos Authentication
@@ -92,6 +93,25 @@ The test script will:
 4. Request a service ticket for `oracle/oracle.corp.internal`
 5. Connect to Oracle via SQLPlus using Kerberos
 6. Query the session authentication method
+
+## Windows Client (RDP)
+
+After the Windows client is provisioned and rebooted (`vagrant reload`):
+
+```
+# Connect via RDP (from the host machine)
+mstsc /v:win-client.corp.internal
+
+# Login as the domain user
+Username: CORP\winuser
+Password: StrongPassword123!
+```
+
+The Windows client has:
+- **Domain membership**: Joined to `CORP.INTERNAL`
+- **Java**: Eclipse Temurin 21 LTS for JDBC testing
+- **RDP**: Enabled for remote desktop access
+- **Dashboard**: Status page at `http://win-client/dashboard`
 
 ## How It Works
 
@@ -180,5 +200,10 @@ vagrant-lab/
 │   └── README.md
 └── win-test/
     ├── Vagrantfile
-    └── provision.ps1
+    ├── provision.ps1             # Orchestrator: DNS, connectivity, delegates
+    ├── setup-domain-join.ps1     # AD domain join with DNS wait loop
+    ├── setup-java.ps1            # Eclipse Temurin 21 LTS (JDK) installation
+    ├── setup-rdp.ps1             # Enable RDP + firewall + user access
+    ├── setup-dashboard.ps1       # NSSM service install for dashboard
+    └── dashboard-win.ps1         # PowerShell HTTP listener dashboard
 ```

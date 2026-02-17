@@ -145,18 +145,28 @@ vagrant-lab/
 ├── .kdc_ip                      # Auto-generated KDC IP (gitignored)
 ├── lib/
 │   ├── hosts_trigger.rb         # Shared Vagrant trigger for hosts file mgmt
-│   └── fetch_with_retry.sh      # Shared download-with-retry helper
+│   ├── fetch_with_retry.sh      # Shared download-with-retry helper
+│   └── dashboard-common.sh      # Shared dashboard HTML/CSS helpers
 ├── kdc/
 │   ├── Vagrantfile
 │   ├── provision.sh
+│   ├── dashboard-kdc.sh         # KDC status dashboard CGI script
 │   └── README.md
 ├── oracle/
 │   ├── Vagrantfile
 │   ├── provision.sh
+│   ├── dashboard-oracle.sh      # Oracle status dashboard CGI script
 │   └── README.md
 ├── test/
 │   ├── Vagrantfile
 │   ├── provision.sh
+│   ├── dashboard-test.sh        # Test client status dashboard CGI script
+│   ├── install-oracle.sh        # Oracle Instant Client installer
+│   ├── kinit-keytab.sh          # Kerberos TGT helper
+│   ├── test_auth.sh             # End-to-end Kerberos+Oracle auth test
+│   ├── connect.isql             # Password-based Oracle connection script
+│   ├── connect-kerb.isql        # Kerberos-based Oracle connection script
+│   ├── sqlnet-client.ora        # SQL*Net client Kerberos config
 │   └── README.md
 └── win-test/
     ├── Vagrantfile

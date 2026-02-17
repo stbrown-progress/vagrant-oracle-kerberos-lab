@@ -21,16 +21,52 @@ Write-Host "  Windows Client Provisioning"
 Write-Host "=============================================="
 Write-Host "Target KDC IP: $KdcIp"
 
-# -- 1. Network Configuration ------------------------------------─
-# Point DNS to the Samba AD DC so we can resolve *.corp.internal
+# -- 1. Network Configuration ------------------------------------
+# Point DNS to the Samba AD DC so we can resolve *.corp.internal.
+# We must set DNS via WMI/netsh to make it truly static -- PowerShell's
+# Set-DnsClientServerAddress can get overwritten by DHCP on Hyper-V.
 Write-Host "`n=== 1. Configuring DNS ==="
-Get-NetAdapter | Set-DnsClientServerAddress -ServerAddresses $KdcIp
+
+# Set DNS on each adapter via WMI (survives DHCP renewal)
+Get-NetAdapter | ForEach-Object {
+    $adapterName = $_.Name
+    $idx = $_.InterfaceIndex
+    Write-Host "  Setting DNS on adapter: $adapterName (index $idx)"
+    Set-DnsClientServerAddress -InterfaceIndex $idx -ServerAddresses $KdcIp
+    # Also set the DNS suffix search list so short names resolve under corp.internal
+    Set-DnsClient -InterfaceIndex $idx -ConnectionSpecificSuffix "corp.internal" -ErrorAction SilentlyContinue
+}
+
+# Set the global DNS suffix search list so "ping samba-ad-dc" resolves as .corp.internal
+Set-DnsClientGlobalSetting -SuffixSearchList @("corp.internal") -ErrorAction SilentlyContinue
 
 # Prevent Windows from marking the network as "Public" and blocking WinRM
 Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
 
 # Clear DNS cache to pick up fresh records from the AD DC
 Clear-DnsClientCache
+
+# Verify and log the DNS configuration
+Write-Host "`nDNS configuration after update:"
+Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses.Count -gt 0 } |
+    Format-Table InterfaceAlias, ServerAddresses -AutoSize | Out-String | Write-Host
+
+# Wait for Windows to actually start using the new DNS server.
+Write-Host "Waiting for DNS server change to take effect..."
+for ($i = 1; $i -le 20; $i++) {
+    try {
+        $null = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -DnsOnly -ErrorAction Stop
+        Write-Host "DNS via KDC is working (resolved samba-ad-dc.corp.internal)."
+        break
+    }
+    catch {
+        if ($i -eq 20) {
+            Write-Warning "DNS not responding after 40s. Check KDC is running."
+        } else {
+            Start-Sleep -Seconds 2
+        }
+    }
+}
 
 # -- 2. Connectivity Check ----------------------------------------
 Write-Host "`n=== 2. Testing KDC Connectivity ==="

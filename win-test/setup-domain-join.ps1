@@ -57,8 +57,9 @@ if ($sysInfo.PartOfDomain) {
 # -- Wait for DNS resolution via the new KDC ----------------------
 Write-Host "Joining domain $domainName..."
 
+$maxRetries = 30
 $resolved = $false
-for ($i = 1; $i -le 10; $i++) {
+for ($i = 1; $i -le $maxRetries; $i++) {
     try {
         $testDNS = Resolve-DnsName -Name "samba-ad-dc.corp.internal" -Type A -ErrorAction Stop
         Write-Host "DNS Resolution OK: $($testDNS.IPAddress)"
@@ -66,13 +67,13 @@ for ($i = 1; $i -le 10; $i++) {
         break
     }
     catch {
-        Write-Host "DNS not ready yet ($i/10), retrying in 3s..."
+        Write-Host "DNS not ready yet ($i/$maxRetries), retrying in 3s..."
         Start-Sleep -Seconds 3
     }
 }
 
 if (-not $resolved) {
-    Write-Error "Cannot resolve samba-ad-dc.corp.internal after 10 attempts. Domain join will fail."
+    Write-Error "Cannot resolve samba-ad-dc.corp.internal after $maxRetries attempts (90s). Domain join will fail."
 }
 
 # -- Join the domain ----------------------------------------------

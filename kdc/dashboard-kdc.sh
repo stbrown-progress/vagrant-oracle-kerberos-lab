@@ -41,4 +41,8 @@ dashboard_run_section "Nginx Status" \
 dashboard_run_section "Artifacts Directory" \
     "ls -la /var/www/html/artifacts/"
 
+dashboard_run_section "Samba Logs (last 50 lines)" \
+    "tail -50 /var/log/samba/log.samba 2>/dev/null || echo 'No log.samba found'" \
+    ""
+
 dashboard_end

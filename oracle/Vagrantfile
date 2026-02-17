@@ -2,7 +2,7 @@ require_relative "../lib/hosts_trigger"
 
 Vagrant.configure("2") do |config|
   config.vm.box = "generic/ubuntu2204"
-  config.vm.hostname = "oracle"
+  config.vm.hostname = "oracle.corp.internal"
   config.vm.network "public_network"
 
   config.vm.provider "hyperv" do |hv|

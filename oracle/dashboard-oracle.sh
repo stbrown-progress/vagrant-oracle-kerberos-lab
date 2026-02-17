@@ -48,6 +48,11 @@ dashboard_section "SQL*Net Configuration (inside container)" \
     "cat \$ORACLE_HOME/network/admin/sqlnet.ora" \
     "$sqlnet_output"
 
+# Show the tail of the most recent server trace file (one per connection)
+dashboard_run_section "Oracle Server Trace (latest, last 50 lines)" \
+    "docker exec oracle bash -c 'f=\$(ls -t /tmp/server*.trc 2>/dev/null | head -1); [ -n \"\$f\" ] && echo \"\$f\" && echo \"---\" && tail -50 \"\$f\" || echo \"No trace files found\"'" \
+    ""
+
 dashboard_run_section "Docker Logs (last 30 lines)" \
     "docker logs oracle --tail 30" \
     ""

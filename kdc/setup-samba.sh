@@ -35,14 +35,22 @@ fi
 
 # ── Generate krb5.conf ───────────────────────────────────────────
 # Samba's auto-generated krb5.conf is too minimal — it uses
-# dns_lookup_kdc=true and lacks forwardable/proxiable flags, which
-# causes "Empty nameStrings" errors in some Java JDBC drivers.
+# dns_lookup_kdc=true and lacks an explicit KDC address.
 # We write an explicit config that all VMs will download.
+#
+# udp_preference_limit = 1 forces TCP for all Kerberos traffic.
+# Without this, Java's GSSAPI sends the forwarded-TGT TGS-REQ
+# over UDP. The KDC response exceeds the UDP MTU and Samba returns
+# KRB_ERR_RESPONSE_TOO_BIG (error 52) with an empty sname, which
+# DataDirect JDBC surfaces as "Empty nameStrings not allowed".
+# Java retries AS-REQ and normal TGS-REQ over TCP automatically,
+# but does NOT retry the delegation TGS-REQ — so we force TCP.
 cat <<EOF > /etc/krb5.conf
 [libdefaults]
     default_realm = CORP.INTERNAL
     dns_lookup_realm = false
     dns_lookup_kdc = false
+    udp_preference_limit = 1
     ticket_lifetime = 24h
     forwardable = true
     proxiable = true

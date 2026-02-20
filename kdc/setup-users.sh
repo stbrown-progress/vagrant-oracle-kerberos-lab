@@ -5,8 +5,10 @@
 #   1. Creating the 'oracleuser' account (Oracle DB Kerberos principal)
 #   2. Creating the 'dnsupdater' account (dynamic DNS registration)
 #   3. Creating the 'winuser' account (Windows Kerberos SSO testing)
-#   4. Setting SPNs and encryption types for Kerberos auth
-#   5. Exporting keytabs for other VMs to download via Nginx
+#   4. Creating the 'webappuser' account (constrained delegation service)
+#   5. Setting SPNs and encryption types for Kerberos auth
+#   6. Configuring constrained delegation for webappuser
+#   7. Exporting keytabs and JAAS config for other VMs to download via Nginx
 #
 # Expects: Samba AD DC is running and $KDC_IP is set
 
@@ -34,6 +36,14 @@ if ! samba-tool user list | grep -q "winuser"; then
     samba-tool user create winuser StrongPassword123!
 fi
 
+# webappuser — service principal for constrained delegation testing.
+# Authenticates as HTTP/webapp.corp.internal and impersonates users
+# (e.g. winuser) when connecting to Oracle via S4U2Proxy.
+if ! samba-tool user list | grep -q "webappuser"; then
+    echo "==> Creating AD user: webappuser"
+    samba-tool user create webappuser StrongPassword123!
+fi
+
 # dnsupdater needs DnsAdmins membership to modify DNS records
 samba-tool group addmembers "DnsAdmins" dnsupdater || true
 
@@ -42,13 +52,22 @@ samba-tool user setexpiry Administrator --noexpiry || true
 samba-tool user setexpiry oracleuser   --noexpiry || true
 samba-tool user setexpiry dnsupdater   --noexpiry || true
 samba-tool user setexpiry winuser      --noexpiry || true
+samba-tool user setexpiry webappuser   --noexpiry || true
 
-# ── Register SPN for Oracle Kerberos authentication ──────────────
+# ── Register SPNs ─────────────────────────────────────────────────
 # The SPN "oracle/oracle.corp.internal" is what Oracle clients use
 # to request a service ticket. It must be mapped to the oracleuser
 # account so the keytab can decrypt those tickets.
 echo "Str0ngPassw0rd!" | kinit Administrator
 samba-tool spn add oracle/oracle.corp.internal oracleuser || true
+samba-tool spn add HTTP/webapp.corp.internal webappuser || true
+
+# ── Configure constrained delegation for webappuser ───────────────
+# Enables S4U2Self (protocol transition) and S4U2Proxy so webappuser
+# can impersonate any AD user and obtain a service ticket to Oracle
+# on their behalf.
+samba-tool delegation for-any-protocol webappuser on
+samba-tool delegation add-service webappuser oracle/oracle.corp.internal
 
 # ── Enable strong Kerberos encryption types ──────────────────────
 # Value 31 = DES-CBC-CRC(1) + DES-CBC-MD5(2) + RC4-HMAC(4) +
@@ -61,6 +80,11 @@ replace: msDS-SupportedEncryptionTypes
 msDS-SupportedEncryptionTypes: 31
 
 dn: CN=winuser,CN=Users,DC=corp,DC=internal
+changetype: modify
+replace: msDS-SupportedEncryptionTypes
+msDS-SupportedEncryptionTypes: 31
+
+dn: CN=webappuser,CN=Users,DC=corp,DC=internal
 changetype: modify
 replace: msDS-SupportedEncryptionTypes
 msDS-SupportedEncryptionTypes: 31
@@ -97,15 +121,27 @@ samba-tool domain exportkeytab \
     --principal=winuser@CORP.INTERNAL \
     /var/www/html/artifacts/winuser.keytab
 
+# webappuser.keytab — constrained delegation service principal
+samba-tool domain exportkeytab \
+    --principal=webappuser@CORP.INTERNAL \
+    /var/www/html/artifacts/webappuser.keytab
+
+# ── Deploy JAAS config ───────────────────────────────────────────
+cp /tmp/jaas.conf /var/www/html/artifacts/jaas.conf
+
 chmod 644 /var/www/html/artifacts/*
 
 # ── Verification output ─────────────────────────────────────────
 echo ""
 echo "==> SPNs for oracleuser:"
 samba-tool spn list oracleuser || true
+echo "==> SPNs for webappuser:"
+samba-tool spn list webappuser || true
+echo "==> Delegation for webappuser:"
+samba-tool delegation show webappuser || true
 echo ""
 echo "==> Keytab principals:"
-for kt in oracle.keytab oracleuser.keytab dnsupdater.keytab winuser.keytab; do
+for kt in oracle.keytab oracleuser.keytab dnsupdater.keytab winuser.keytab webappuser.keytab; do
     echo "--- $kt ---"
     klist -k /var/www/html/artifacts/$kt || true
 done

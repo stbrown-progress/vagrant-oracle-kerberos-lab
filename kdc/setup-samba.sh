@@ -58,8 +58,8 @@ cat <<EOF > /etc/krb5.conf
 
 [realms]
     CORP.INTERNAL = {
-        kdc = $KDC_IP
-        admin_server = $KDC_IP
+        kdc = samba-ad-dc.corp.internal
+        admin_server = samba-ad-dc.corp.internal
         default_domain = corp.internal
     }
 

@@ -22,7 +22,7 @@ $Root = $PSScriptRoot
 $VMs         = @("kdc", "oracle", "test", "win-test")
 $VMsReversed = @("win-test", "test", "oracle", "kdc")
 $ValidVMs    = @("kdc", "oracle", "test", "win-test")
-$ValidActions = @("up", "down", "stop", "start", "status", "rebuild-kdc")
+$ValidActions = @("up", "down", "stop", "start", "provision", "status", "rebuild-kdc")
 
 # ---------------------------------------------------------
 # Help
@@ -40,6 +40,7 @@ function Show-Help {
     Write-Host "    down            Destroy VMs permanently"
     Write-Host "    stop            Gracefully shut down VMs"
     Write-Host "    start           Resume halted VMs and re-provision"
+    Write-Host "    provision       Re-provision running VMs [KDC first, then dependents]"
     Write-Host "    status          Show the state of all VMs"
     Write-Host "    rebuild-kdc     Destroy and rebuild the KDC, re-provision running dependents"
     Write-Host ""
@@ -57,6 +58,8 @@ function Show-Help {
     Write-Host "    lab start               Resume all VMs after a stop"
     Write-Host "    lab start oracle        Resume just the Oracle VM"
     Write-Host "    lab down                Destroy all VMs"
+    Write-Host "    lab provision            Re-provision all running VMs"
+    Write-Host "    lab provision kdc        Re-provision just the KDC"
     Write-Host "    lab status              Show status of all VMs"
     Write-Host "    lab rebuild-kdc         Rebuild the KDC from scratch"
     Write-Host ""
@@ -185,6 +188,29 @@ function Invoke-Start {
     Write-Host "`n=== All VMs started ===" -ForegroundColor Green
 }
 
+function Invoke-Provision {
+    param([string]$VM)
+    if ($VM) {
+        $state = Get-VmStatus $VM
+        if ($state -ne "running") {
+            Write-Warning "$VM is not running [$state] -- skipping"
+            return
+        }
+        Invoke-VagrantInDir $VM "vagrant provision" "Provisioning $VM"
+        return
+    }
+    # Provision in dependency order, skipping non-running VMs
+    foreach ($v in $VMs) {
+        $state = Get-VmStatus $v
+        if ($state -eq "running") {
+            Invoke-VagrantInDir $v "vagrant provision" "Provisioning $v"
+        } else {
+            Write-Host "`n=== Skipping $v [$state] ===" -ForegroundColor DarkGray
+        }
+    }
+    Write-Host "`n=== Provisioning complete ===" -ForegroundColor Green
+}
+
 function Invoke-Status {
     Write-Host ""
     Write-Host "  VM Status" -ForegroundColor Cyan
@@ -289,6 +315,7 @@ switch ($Action) {
     "down"        { Invoke-Down $Name }
     "stop"        { Invoke-Stop $Name }
     "start"       { Invoke-Start $Name }
+    "provision"   { Invoke-Provision $Name }
     "status"      { Invoke-Status }
     "rebuild-kdc" { Invoke-RebuildKdc }
 }

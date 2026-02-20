@@ -90,6 +90,9 @@ public class ConstrainedDelegationTest {
         props.put("authenticationMethod", "Kerberos");
         props.put("ServiceName", ORACLE_SERVICE);
 
+        // required for kerberos5pre
+        props.put("useConnectVersion315", "true");
+
         Connection con = DriverManager.getConnection("jdbc:datadirect:oracle:", props);
         printConnectionMetaData(con);
         con.close();

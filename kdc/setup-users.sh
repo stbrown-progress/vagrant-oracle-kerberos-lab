@@ -66,8 +66,8 @@ samba-tool spn add HTTP/webapp.corp.internal webappuser || true
 # Enables S4U2Self (protocol transition) and S4U2Proxy so webappuser
 # can impersonate any AD user and obtain a service ticket to Oracle
 # on their behalf.
-samba-tool delegation for-any-protocol webappuser on
-samba-tool delegation add-service webappuser oracle/oracle.corp.internal
+samba-tool delegation for-any-protocol webappuser on || true
+samba-tool delegation add-service webappuser oracle/oracle.corp.internal || true
 
 # ── Enable strong Kerberos encryption types ──────────────────────
 # Value 31 = DES-CBC-CRC(1) + DES-CBC-MD5(2) + RC4-HMAC(4) +

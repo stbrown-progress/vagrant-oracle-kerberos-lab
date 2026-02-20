@@ -54,7 +54,7 @@ vagrant destroy -f  # tear down
 
 **Note:** After the Windows client's first boot, run `vagrant reload` from `win-test/` to complete the domain join reboot.
 
-### Rebuilding the KDC
+### Rebuilding the KDC (UNTESTED!)
 
 If you need to destroy and recreate the KDC without losing your other VMs:
 
@@ -86,24 +86,6 @@ This destroys the KDC, rebuilds it from scratch, and re-provisions all running V
 | Windows test user | `winuser` / `StrongPassword123!` |
 | Oracle test user | `testuser` / `testpassword` |
 
-## Testing Kerberos Authentication
-
-From the **test client** VM:
-
-```bash
-vagrant ssh              # from the test/ directory
-./install-oracle.sh      # one-time Oracle Instant Client install
-./test_auth.sh           # runs full Kerberos auth test
-```
-
-The test script will:
-1. Verify KDC connectivity (port 88)
-2. Resolve `oracle.corp.internal` via DNS
-3. Obtain a TGT for `oracleuser@CORP.INTERNAL`
-4. Request a service ticket for `oracle/oracle.corp.internal`
-5. Connect to Oracle via SQLPlus using Kerberos
-6. Query the session authentication method
-
 ## Windows Client (RDP)
 
 After the Windows client is provisioned and rebooted (`vagrant reload`):
@@ -119,7 +101,6 @@ Password: StrongPassword123!
 
 The Windows client has:
 - **Domain membership**: Joined to `CORP.INTERNAL`
-- **Java**: Eclipse Temurin 21 LTS for JDBC testing
 - **RDP**: Enabled for remote desktop access
 - **Dashboard**: Status page at `http://win-client/dashboard`
 
